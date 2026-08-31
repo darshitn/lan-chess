@@ -33,6 +33,22 @@ const getOrCreatePlayerSessionId = () => {
 };
 type Promotion = { from: Square; to: Square };
 const sq = (file: string, rank: string) => `${file}${rank}` as Square;
+const playTone = (frequency: number, duration = 0.08, type: OscillatorType = 'sine', volume = 0.04) => {
+  const AudioConstructor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioConstructor) return;
+  const context = new AudioConstructor();
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
+  oscillator.type = type;
+  oscillator.frequency.value = frequency;
+  gain.gain.value = volume;
+  oscillator.connect(gain);
+  gain.connect(context.destination);
+  oscillator.start();
+  oscillator.stop(context.currentTime + duration);
+  gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + duration);
+  setTimeout(() => context.close(), duration * 1000 + 80);
+};
 
 export function App() {
   const socket = useMemo<Socket<ServerToClientEvents, ClientToServerEvents>>(() => {
@@ -41,6 +57,7 @@ export function App() {
   }, []);
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [color, setColor] = useState<PlayerColor | null>(null);
+  const [role, setRole] = useState<'player' | 'spectator'>('player');
   const [playerName, setPlayerName] = useState('Player');
   const [joinCode, setJoinCode] = useState('');
   const [hostUrl, setHostUrl] = useState<string | null>(null);
@@ -50,9 +67,10 @@ export function App() {
   const [promotion, setPromotion] = useState<Promotion | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
   const [timeControl, setTimeControl] = useState<TimeControl>('3+0');
+  const [chatInput, setChatInput] = useState('');
 
   const chess = useMemo(() => new Chess(gameState?.fen), [gameState?.fen]);
-  const canMove = Boolean(gameState && color && gameState.status === 'active' && gameState.turn === color);
+  const canMove = Boolean(gameState && role === 'player' && color && gameState.status === 'active' && gameState.turn === color);
 
   useEffect(() => {
     const persistSessionId = (sessionId: string) => window.localStorage.setItem(PLAYER_STORAGE_KEY, sessionId);
@@ -76,14 +94,16 @@ export function App() {
     const onReconnectAttempt = () => {
       setConnectionStatus('reconnecting');
     };
-    const onRoomCreated = (room: { playerColor: PlayerColor; hostUrl: string | null; sessionId: string }) => {
+    const onRoomCreated = (room: { playerColor: PlayerColor; hostUrl: string | null; sessionId: string; role?: 'player' | 'spectator' }) => {
       setColor(room.playerColor);
+      setRole(room.role ?? 'player');
       setHostUrl(room.hostUrl);
       setError('');
       persistSessionId(room.sessionId);
     };
-    const onRoomJoined = (room: { playerColor: PlayerColor; sessionId: string }) => {
+    const onRoomJoined = (room: { playerColor: PlayerColor | null; sessionId: string; role?: 'player' | 'spectator' }) => {
       setColor(room.playerColor);
+      setRole(room.role ?? (room.playerColor ? 'player' : 'spectator'));
       setError('');
       persistSessionId(room.sessionId);
     };
@@ -143,6 +163,7 @@ export function App() {
   function requestMove(from: Square, to: Square, promotionPiece?: PromotionPiece) {
     if (!canMove) return;
     socket.emit('make-move', { from, to, promotion: promotionPiece });
+    playTone(660, 0.09, 'triangle', 0.025);
     setSelected(null); setPromotion(null);
   }
   function pick(square: Square) {
@@ -163,31 +184,36 @@ export function App() {
   }
   function createGame() { socket.emit('create-game', { playerName, sessionId: getOrCreatePlayerSessionId(), timeControl }); }
   function joinGame() { socket.emit('join-game', { roomCode: joinCode, playerName, sessionId: getOrCreatePlayerSessionId() }); }
+  function spectateGame() { socket.emit('join-spectator', { roomCode: joinCode, playerName, sessionId: getOrCreatePlayerSessionId() }); }
   function resignGame() {
-    if (!gameState || gameState.status !== 'active') return;
+    if (!gameState || gameState.status !== 'active' || role !== 'player' || !color) return;
     if (!window.confirm('Resign this game?')) return;
     socket.emit('resign-game');
+    playTone(220, 0.12, 'sawtooth', 0.03);
   }
   function offerDraw() {
-    if (!gameState || gameState.status !== 'active') return;
+    if (!gameState || gameState.status !== 'active' || role !== 'player' || !color) return;
     if (gameState.drawOfferBy) {
       setError('A draw is already pending.');
       return;
     }
     if (!window.confirm('Offer a draw to the opponent?')) return;
     socket.emit('offer-draw');
+    playTone(440, 0.08, 'triangle', 0.03);
   }
   function respondToDraw(accept: boolean) {
-    if (!gameState || gameState.drawOfferBy === null || gameState.drawOfferBy === color) return;
+    if (!gameState || gameState.drawOfferBy === null || role !== 'player' || !color || gameState.drawOfferBy === color) return;
     socket.emit('respond-draw', { accept });
   }
   function requestRematch() {
-    if (!gameState || gameState.status !== 'finished') return;
+    if (!gameState || gameState.status !== 'finished' || role !== 'player' || !color) return;
     socket.emit('request-rematch');
+    playTone(520, 0.07, 'triangle', 0.03);
   }
   function respondToRematch(accept: boolean) {
-    if (!gameState || gameState.status !== 'finished') return;
+    if (!gameState || gameState.status !== 'finished' || role !== 'player' || !color) return;
     socket.emit('respond-rematch', { accept });
+    playTone(accept ? 680 : 180, 0.09, accept ? 'triangle' : 'square', 0.03);
   }
   function leaveRoom() {
     socket.emit('leave-room');
@@ -195,10 +221,17 @@ export function App() {
     setColor(null);
     setSelected(null);
     setPromotion(null);
+    setChatInput('');
     setError('');
   }
 
-  if (!gameState) return <main className="min-h-screen bg-slate-950 px-4 py-12 text-slate-100"><section className="mx-auto max-w-lg rounded-2xl border border-slate-700 bg-slate-900 p-7 shadow-2xl shadow-black/30"><p className="text-xs font-bold tracking-[.28em] text-amber-400">LOCAL NETWORK</p><h1 className="mt-1 text-4xl font-bold">LAN CHESS</h1><p className="mt-3 text-slate-400">Create a room or join a friend on the same Wi-Fi.</p><label className="mt-7 block text-sm font-medium">Your name<input value={playerName} onChange={(event) => setPlayerName(event.target.value)} maxLength={24} className="field" placeholder="Player name" /></label><label className="mt-5 block text-sm font-medium">Time control<select value={timeControl} onChange={(event) => setTimeControl(event.target.value as TimeControl)} className="field mt-2">{TIME_CONTROL_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><button type="button" onClick={createGame} className="action-button action-primary mt-5 w-full">Create game</button><div className="my-6 border-t border-slate-700" /><label className="block text-sm font-medium">Room code<input value={joinCode} onChange={(event) => setJoinCode(event.target.value.toUpperCase())} maxLength={5} className="field code-field" placeholder="ABCDE" /></label><button type="button" onClick={joinGame} disabled={!joinCode.trim()} className="action-button action-secondary mt-3 w-full disabled:cursor-not-allowed disabled:opacity-40">Join game</button>{error && <p className="mt-5 rounded-lg bg-rose-950 px-3 py-2 text-sm text-rose-200">{error}</p>}</section></main>;
+  function sendChat() {
+    if (!gameState || !chatInput.trim()) return;
+    socket.emit('send-chat', { message: chatInput.trim() });
+    setChatInput('');
+  }
+
+  if (!gameState) return <main className="min-h-screen bg-slate-950 px-4 py-12 text-slate-100"><section className="mx-auto max-w-lg rounded-2xl border border-slate-700 bg-slate-900 p-7 shadow-2xl shadow-black/30"><p className="text-xs font-bold tracking-[.28em] text-amber-400">LOCAL NETWORK</p><h1 className="mt-1 text-4xl font-bold">LAN CHESS</h1><p className="mt-3 text-slate-400">Create a room, join a friend on the same Wi‑Fi, or watch from the sidelines.</p><label className="mt-7 block text-sm font-medium">Your name<input value={playerName} onChange={(event) => setPlayerName(event.target.value)} maxLength={24} className="field" placeholder="Player name" /></label><label className="mt-5 block text-sm font-medium">Time control<select value={timeControl} onChange={(event) => setTimeControl(event.target.value as TimeControl)} className="field mt-2">{TIME_CONTROL_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><button type="button" onClick={createGame} className="action-button action-primary mt-5 w-full">Create game</button><div className="my-6 border-t border-slate-700" /><label className="block text-sm font-medium">Room code<input value={joinCode} onChange={(event) => setJoinCode(event.target.value.toUpperCase())} maxLength={5} className="field code-field" placeholder="ABCDE" /></label><div className="mt-3 grid gap-3 sm:grid-cols-2"><button type="button" onClick={joinGame} disabled={!joinCode.trim()} className="action-button action-secondary w-full disabled:cursor-not-allowed disabled:opacity-40">Join as player</button><button type="button" onClick={spectateGame} disabled={!joinCode.trim()} className="action-button action-secondary w-full disabled:cursor-not-allowed disabled:opacity-40">Watch as spectator</button></div>{error && <p className="mt-5 rounded-lg bg-rose-950 px-3 py-2 text-sm text-rose-200">{error}</p>}</section></main>;
 
   const capturesByWhite = gameState.moves.filter((move) => move.color === 'w' && move.captured);
   const capturesByBlack = gameState.moves.filter((move) => move.color === 'b' && move.captured);
@@ -213,20 +246,23 @@ export function App() {
   const opponentRematchRequested = gameState.rematchRequests[opponentColor];
 
   return <main className="min-h-screen bg-slate-950 px-4 py-6 text-slate-100 sm:px-6 lg:px-8 lg:py-10"><div className="mx-auto max-w-7xl">
-    <header className="mb-6 flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-bold tracking-[.28em] text-amber-400">ROOM {gameState.roomCode}</p><h1 className="mt-1 text-3xl font-bold sm:text-4xl">LAN CHESS</h1></div><div className="flex items-center gap-2"><span className={`rounded-full px-3 py-1 text-sm font-bold ${connectionClasses}`}>{connectionLabel}</span><span className={`rounded-full px-3 py-1 text-sm font-bold ${color === 'w' ? 'bg-slate-100 text-slate-950' : 'bg-slate-700 text-white'}`}>You are {color === 'w' ? 'White' : 'Black'}</span></div></header>
+    <header className="mb-6 flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-bold tracking-[.28em] text-amber-400">ROOM {gameState.roomCode}</p><h1 className="mt-1 text-3xl font-bold sm:text-4xl">LAN CHESS</h1></div><div className="flex items-center gap-2"><span className={`rounded-full px-3 py-1 text-sm font-bold ${connectionClasses}`}>{connectionLabel}</span><span className={`rounded-full px-3 py-1 text-sm font-bold ${role === 'spectator' ? 'bg-violet-500/20 text-violet-200' : color === 'w' ? 'bg-slate-100 text-slate-950' : 'bg-slate-700 text-white'}`}>{role === 'spectator' ? 'Spectator' : `You are ${color === 'w' ? 'White' : 'Black'}`}</span>{gameState.spectatorCount > 0 && <span className="rounded-full border border-slate-600 bg-slate-800 px-2.5 py-1 text-xs font-semibold uppercase tracking-[.2em] text-slate-300">{gameState.spectatorCount} Spectators</span>}</div></header>
     {gameState.status === 'waiting' && <section className="mb-5 rounded-xl border border-amber-500/50 bg-amber-400/10 p-4"><p className="font-bold text-amber-300">{gameState.message}</p>{gameState.blackName ? <p className="mt-1 text-sm text-slate-300">Reconnect the opponent to continue.</p> : <p className="mt-1 text-sm text-slate-300">Share room code <b className="font-mono text-lg tracking-widest text-white">{gameState.roomCode}</b>{hostUrl && <> or open <a className="text-amber-300 underline" href={hostUrl}>{hostUrl}</a></>} on the other device.</p>}</section>}
     {gameState.drawOfferBy !== null && gameState.drawOfferBy !== color && gameState.status === 'active' && <div className="mb-4 rounded-xl border border-amber-500/50 bg-amber-500/10 p-3"><p className="font-bold text-amber-300">Draw offered</p><div className="mt-3 flex gap-2"><button type="button" onClick={() => respondToDraw(true)} className="action-button action-primary flex-1">[ ACCEPT ]</button><button type="button" onClick={() => respondToDraw(false)} className="action-button action-secondary flex-1">[ DECLINE ]</button></div></div>}
-    {gameState.status === 'active' && <div className="mb-4 flex flex-wrap gap-2"><button type="button" onClick={resignGame} className="action-button action-secondary">[ RESIGN ]</button><button type="button" onClick={offerDraw} disabled={gameState.drawOfferBy !== null} className="action-button action-secondary disabled:cursor-not-allowed disabled:opacity-40">[ OFFER DRAW ]</button></div>}
+    {gameState.status === 'active' && role === 'player' && <div className="mb-4 flex flex-wrap gap-2"><button type="button" onClick={resignGame} className="action-button action-secondary">[ RESIGN ]</button><button type="button" onClick={offerDraw} disabled={gameState.drawOfferBy !== null} className="action-button action-secondary disabled:cursor-not-allowed disabled:opacity-40">[ OFFER DRAW ]</button></div>}
     {error && <p className="mb-4 rounded-lg bg-rose-950 px-3 py-2 text-sm text-rose-200">{error}</p>}
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start"><section className="mx-auto w-full max-w-[46rem]"><div className="mb-3 flex items-center justify-between rounded-xl border border-slate-700 bg-slate-900 px-4 py-3"><p className="font-semibold"><span className={chess.isCheck() ? 'text-rose-400' : 'text-emerald-400'}>●</span> {gameState.message}</p><span className="text-sm text-slate-400">Move {currentMoveNumber}</span></div><div className="board-shell"><div className="chessboard" role="grid" aria-label="Chessboard">
       {ranks.map((rank, row) => files.map((file, column) => { const square = sq(file, rank); const piece = chess.get(square); const move = targets.get(square); const last = lastMove?.from === square || lastMove?.to === square; const light = (FILES.indexOf(file as typeof FILES[number]) + Number(rank)) % 2 !== 0; return <button key={square} type="button" role="gridcell" aria-label={`${square}${piece ? `, ${piece.color === 'w' ? 'white' : 'black'} ${NAMES[piece.type]}` : ''}`} onClick={() => pick(square)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => drop(event, square)} className={`square ${light ? 'square-light' : 'square-dark'} ${selected === square ? 'selected-square' : ''} ${last ? 'last-move' : ''} ${chess.isCheck() && piece?.type === 'k' && piece.color === chess.turn() ? 'checked-king' : ''}`}>{column === 0 && <span className={`rank-label ${light ? 'dark-label' : 'light-label'}`}>{rank}</span>}{row === 7 && <span className={`file-label ${light ? 'dark-label' : 'light-label'}`}>{file}</span>}{move && <span className={move.captured || piece ? 'legal-capture' : 'legal-dot'} />}{piece && <span draggable onDragStart={(event) => dragStart(event, square)} className={`piece piece-${piece.color}`}>{PIECES[piece.color][piece.type]}</span>}</button>; }))}
     </div></div></section>
-    <aside className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1"><section className="panel sm:col-span-2 lg:col-span-1"><div className="flex justify-between"><h2>Players</h2><span className="text-sm text-slate-400">{gameState.turn === 'w' ? 'White' : 'Black'} to move</span></div><div className={`mt-3 rounded-xl border px-3 py-2 ${gameState.turn === 'w' ? 'border-amber-400 bg-amber-500/10' : 'border-slate-700 bg-slate-800/60'}`}><div className="flex items-center justify-between"><p>♔ {gameState.whiteName}</p><span className={`font-mono text-sm ${whiteLowTime ? 'text-rose-300' : 'text-emerald-300'}`}>{formatClock(gameState.whiteTimeMs)}</span></div></div><div className={`mt-2 rounded-xl border px-3 py-2 ${gameState.turn === 'b' ? 'border-amber-400 bg-amber-500/10' : 'border-slate-700 bg-slate-800/60'}`}><div className="flex items-center justify-between"><p className="text-slate-300">♚ {gameState.blackName ?? 'Waiting for opponent'}</p><span className={`font-mono text-sm ${blackLowTime ? 'text-rose-300' : 'text-emerald-300'}`}>{formatClock(gameState.blackTimeMs)}</span></div></div><div className="mt-3 text-xs uppercase tracking-[.2em] text-slate-400">Time control: {gameState.timeControl === 'unlimited' ? 'Unlimited' : gameState.timeControl}</div><button type="button" onClick={() => setFlipped((value) => !value)} className="action-button action-secondary mt-4 w-full">Flip board</button></section><section className="panel"><h2>Captured by White</h2><Captured moves={capturesByWhite} /><h2 className="mt-5">Captured by Black</h2><Captured moves={capturesByBlack} /></section><section className="panel min-h-48 sm:col-span-2 lg:col-span-1"><h2>Move history</h2><ol className="move-list">{Array.from({ length: Math.ceil(gameState.moves.length / 2) }, (_, index) => <li key={index}><span>{index + 1}.</span><b>{gameState.moves[index * 2]?.san}</b><b>{gameState.moves[index * 2 + 1]?.san ?? ''}</b></li>)}{!gameState.moves.length && <li className="empty-history">Moves will appear here.</li>}</ol></section></aside></div>
-  </div>{promotion && <div className="promotion-backdrop" role="dialog" aria-modal="true"><section className="promotion-dialog"><p className="text-sm font-bold tracking-[.18em] text-amber-400">PAWN PROMOTION</p><h2>Choose a piece</h2><div className="mt-5 grid grid-cols-4 gap-2">{(['q', 'r', 'b', 'n'] as PromotionPiece[]).map((piece) => <button key={piece} type="button" onClick={() => requestMove(promotion.from, promotion.to, piece)} className="promotion-choice">{PIECES[color!][piece]}</button>)}</div></section></div>}{gameState.status === 'finished' && (() => {
-    const showOpponentRequest = opponentRematchRequested && !myRematchRequested;
-    const showWaiting = myRematchRequested && !opponentRematchRequested;
-    const showDefaultRequest = !myRematchRequested && !opponentRematchRequested;
+    <aside className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1"><section className="panel sm:col-span-2 lg:col-span-1"><div className="flex justify-between"><h2>Players</h2><span className="text-sm text-slate-400">{gameState.turn === 'w' ? 'White' : 'Black'} to move</span></div><div className={`mt-3 rounded-xl border px-3 py-2 ${gameState.turn === 'w' ? 'border-amber-400 bg-amber-500/10' : 'border-slate-700 bg-slate-800/60'}`}><div className="flex items-center justify-between"><p>♔ {gameState.whiteName}</p><span className={`font-mono text-sm ${whiteLowTime ? 'text-rose-300' : 'text-emerald-300'}`}>{formatClock(gameState.whiteTimeMs)}</span></div></div><div className={`mt-2 rounded-xl border px-3 py-2 ${gameState.turn === 'b' ? 'border-amber-400 bg-amber-500/10' : 'border-slate-700 bg-slate-800/60'}`}><div className="flex items-center justify-between"><p className="text-slate-300">♚ {gameState.blackName ?? 'Waiting for opponent'}</p><span className={`font-mono text-sm ${blackLowTime ? 'text-rose-300' : 'text-emerald-300'}`}>{formatClock(gameState.blackTimeMs)}</span></div></div><div className="mt-3 text-xs uppercase tracking-[.2em] text-slate-400">Time control: {gameState.timeControl === 'unlimited' ? 'Unlimited' : gameState.timeControl}</div><button type="button" onClick={() => setFlipped((value) => !value)} className="action-button action-secondary mt-4 w-full">Flip board</button></section><section className="panel"><h2>Captured by White</h2><Captured moves={capturesByWhite} /><h2 className="mt-5">Captured by Black</h2><Captured moves={capturesByBlack} /></section><section className="panel sm:col-span-2 lg:col-span-1"><div className="mb-2 flex items-center justify-between"><h2>Room chat</h2><span className="text-xs uppercase tracking-[.2em] text-slate-400">{gameState.chatMessages.length} messages</span></div><div className="chat-panel">{gameState.chatMessages.length ? gameState.chatMessages.map((entry) => (<div key={entry.id} className={`chat-message ${entry.sender === playerName ? 'chat-self' : ''}`}><p className="chat-meta"><span>{entry.sender === playerName ? 'You' : entry.sender}</span><time>{new Date(entry.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></p><p>{entry.message}</p></div>)) : <p className="empty-history">No messages yet. Start the conversation.</p>}</div><div className="chat-composer"><input type="text" value={chatInput} onChange={(event) => setChatInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); sendChat(); } }} maxLength={180} placeholder="Message the room..." className="field" /><button type="button" onClick={sendChat} className="action-button action-primary mt-2 w-full">Send</button></div></section><section className="panel min-h-48 sm:col-span-2 lg:col-span-1"><h2>Move history</h2><ol className="move-list">{Array.from({ length: Math.ceil(gameState.moves.length / 2) }, (_, index) => <li key={index}><span>{index + 1}.</span><b>{gameState.moves[index * 2]?.san}</b><b>{gameState.moves[index * 2 + 1]?.san ?? ''}</b></li>)}{!gameState.moves.length && <li className="empty-history">Moves will appear here.</li>}</ol></section></aside></div>  </div>{promotion && <div className="promotion-backdrop" role="dialog" aria-modal="true"><section className="promotion-dialog"><p className="text-sm font-bold tracking-[.18em] text-amber-400">PAWN PROMOTION</p><h2>Choose a piece</h2><div className="mt-5 grid grid-cols-4 gap-2">{(['q', 'r', 'b', 'n'] as PromotionPiece[]).map((piece) => <button key={piece} type="button" onClick={() => requestMove(promotion.from, promotion.to, piece)} className="promotion-choice">{PIECES[color!][piece]}</button>)}</div></section></div>}{gameState.status === 'finished' && (() => {
+        if (role !== 'player' || !color) {
+          return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4"><div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 text-center shadow-2xl shadow-black/40"><p className="text-xs font-bold tracking-[.28em] text-amber-400">GAME OVER</p><h2 className="mt-3 text-3xl font-bold">Winner: {gameState.winner === 'draw' ? 'Draw' : gameState.winner === 'w' ? 'White' : 'Black'}</h2><p className="mt-2 text-slate-300">Reason: {gameState.reason ?? 'Game finished'}</p><div className="mt-6 flex flex-col gap-3 sm:flex-row"><button type="button" onClick={leaveRoom} className="action-button action-secondary flex-1">[ RETURN HOME ]</button></div></div></div>;
+        }
 
-    return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4"><div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 text-center shadow-2xl shadow-black/40"><p className="text-xs font-bold tracking-[.28em] text-amber-400">GAME OVER</p><h2 className="mt-3 text-3xl font-bold">Winner: {gameState.winner === 'draw' ? 'Draw' : gameState.winner === 'w' ? 'White' : 'Black'}</h2><p className="mt-2 text-slate-300">Reason: {gameState.reason ?? 'Game finished'}</p>{showOpponentRequest && <p className="mt-4 rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">Opponent wants a rematch.</p>}{showWaiting && <p className="mt-4 rounded-lg border border-emerald-500/50 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">Rematch requested. Waiting for opponent approval.</p>}{showOpponentRequest ? <div className="mt-4 flex flex-col gap-3 sm:flex-row"><button type="button" onClick={() => respondToRematch(true)} className="action-button action-primary flex-1">[ ACCEPT REMATCH ]</button><button type="button" onClick={() => respondToRematch(false)} className="action-button action-secondary flex-1">[ DECLINE ]</button></div> : showWaiting ? <div className="mt-6 flex flex-col gap-3 sm:flex-row"><button type="button" onClick={requestRematch} className="action-button action-primary flex-1" disabled>[ REMATCH REQUESTED ]</button><button type="button" onClick={leaveRoom} className="action-button action-secondary flex-1">[ RETURN HOME ]</button></div> : showDefaultRequest ? <div className="mt-6 flex flex-col gap-3 sm:flex-row"><button type="button" onClick={requestRematch} className="action-button action-primary flex-1">[ REMATCH ]</button><button type="button" onClick={leaveRoom} className="action-button action-secondary flex-1">[ RETURN HOME ]</button></div> : <div className="mt-6 flex flex-col gap-3 sm:flex-row"><button type="button" onClick={leaveRoom} className="action-button action-secondary flex-1">[ RETURN HOME ]</button></div>}</div></div>; })()}</main>;}
+        const showOpponentRequest = opponentRematchRequested && !myRematchRequested;
+        const showWaiting = myRematchRequested && !opponentRematchRequested;
+        const showDefaultRequest = !myRematchRequested && !opponentRematchRequested;
+
+        return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4"><div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 text-center shadow-2xl shadow-black/40"><p className="text-xs font-bold tracking-[.28em] text-amber-400">GAME OVER</p><h2 className="mt-3 text-3xl font-bold">Winner: {gameState.winner === 'draw' ? 'Draw' : gameState.winner === 'w' ? 'White' : 'Black'}</h2><p className="mt-2 text-slate-300">Reason: {gameState.reason ?? 'Game finished'}</p>{showOpponentRequest && <p className="mt-4 rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">Opponent wants a rematch.</p>}{showWaiting && <p className="mt-4 rounded-lg border border-emerald-500/50 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">Rematch requested. Waiting for opponent approval.</p>}{showOpponentRequest ? <div className="mt-4 flex flex-col gap-3 sm:flex-row"><button type="button" onClick={() => respondToRematch(true)} className="action-button action-primary flex-1">[ ACCEPT REMATCH ]</button><button type="button" onClick={() => respondToRematch(false)} className="action-button action-secondary flex-1">[ DECLINE ]</button></div> : showWaiting ? <div className="mt-6 flex flex-col gap-3 sm:flex-row"><button type="button" onClick={requestRematch} className="action-button action-primary flex-1" disabled>[ REMATCH REQUESTED ]</button><button type="button" onClick={leaveRoom} className="action-button action-secondary flex-1">[ RETURN HOME ]</button></div> : showDefaultRequest ? <div className="mt-6 flex flex-col gap-3 sm:flex-row"><button type="button" onClick={requestRematch} className="action-button action-primary flex-1">[ REMATCH ]</button><button type="button" onClick={leaveRoom} className="action-button action-secondary flex-1">[ RETURN HOME ]</button></div> : <div className="mt-6 flex flex-col gap-3 sm:flex-row"><button type="button" onClick={leaveRoom} className="action-button action-secondary flex-1">[ RETURN HOME ]</button></div>}</div></div>; })()}</main>}
 
 function Captured({ moves }: { moves: GameMove[] }) { return <div className="captured-pieces">{moves.length ? moves.map((move, index) => <span key={`${move.from}-${move.to}-${index}`} title={NAMES[move.captured!] as string}>{PIECES[move.color === 'w' ? 'b' : 'w'][move.captured!]}</span>) : <span className="text-sm text-slate-500">None</span>}</div>; }

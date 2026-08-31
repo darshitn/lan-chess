@@ -6,12 +6,14 @@ import path from 'node:path';
 import express from 'express';
 import { Chess } from 'chess.js';
 import { Server } from 'socket.io';
-import type { ClientToServerEvents, GameState, PlayerColor, ServerStatus, ServerToClientEvents, TimeControl } from '../shared/types.js';
+import type { ChatMessage, ClientToServerEvents, GameState, PlayerColor, PromotionPiece, ServerStatus, ServerToClientEvents, TimeControl } from '../shared/types.js';
 import { getLanIp } from './network.js';
+import { isChessSquare, MAX_CHAT_MESSAGE_LENGTH, MAX_PLAYER_NAME_LENGTH, MAX_ROOM_CODE_LENGTH, normalizePromotion, normalizeRoomCode, sanitizeChatMessage, sanitizePlayerName, validateSessionId } from './validation.js';
 
 const PORT = Number(process.env.PORT ?? 3001);
 const HOST = '0.0.0.0';
 const RECONNECT_GRACE_PERIOD_MS = Number(process.env.RECONNECT_GRACE_PERIOD_MS ?? 30000);
+const MAX_SPECTATORS = Number(process.env.MAX_SPECTATORS ?? 8);
 const app = express();
 const httpServer = createServer(app);
 const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, { cors: { origin: true } });
@@ -25,11 +27,20 @@ interface PlayerRecord {
   joinedAt: number;
 }
 
+interface SpectatorRecord {
+  sessionId: string;
+  name: string;
+  socketId: string | null;
+  joinedAt: number;
+  disconnected: boolean;
+}
+
 interface Room {
   code: string;
   chess: Chess;
   white: PlayerRecord | null;
   black: PlayerRecord | null;
+  spectators: SpectatorRecord[];
   abandonedBy: PlayerColor | null;
   lastUpdated: number;
   timeControl: TimeControl;
@@ -41,13 +52,14 @@ interface Room {
   resultReason: string | null;
   drawOfferBy: PlayerColor | null;
   rematchRequests: Record<PlayerColor, boolean>;
+  chatMessages: ChatMessage[];
 }
 
 const rooms = new Map<string, Room>();
-const sessionToRoom = new Map<string, { roomCode: string; color: PlayerColor }>();
+const sessionToRoom = new Map<string, { roomCode: string; color?: PlayerColor; role: 'player' | 'spectator' }>();
 const cleanupTimers = new Map<string, NodeJS.Timeout>();
 
-const safeName = (name: string) => name.trim().slice(0, 24) || 'Player';
+const safeName = sanitizePlayerName;
 const createSessionId = () => `session-${randomBytes(12).toString('hex')}`;
 const normalizeTimeControl = (value?: TimeControl): TimeControl => {
   if (value === 'unlimited' || value === '3+0' || value === '5+0' || value === '10+0') return value;
@@ -72,6 +84,10 @@ function getRoomPlayer(room: Room, sessionId: string): PlayerRecord | null {
   if (room.white?.sessionId === sessionId) return room.white;
   if (room.black?.sessionId === sessionId) return room.black;
   return null;
+}
+
+function getRoomSpectator(room: Room, sessionId: string): SpectatorRecord | null {
+  return room.spectators.find((spectator) => spectator.sessionId === sessionId) ?? null;
 }
 
 function hostUrl() {
@@ -108,6 +124,7 @@ function finishRoom(room: Room, winner: PlayerColor | 'draw', reason: string) {
   room.rematchRequests = { w: false, b: false };
   room.timeoutColor = null;
   room.abandonedBy = null;
+  room.chatMessages = [];
   broadcast(room);
 }
 
@@ -118,7 +135,6 @@ function stateFor(room: Room): GameState {
   const blackTimeMs = room.timeControl === 'unlimited' ? null : getRemainingTime(room, 'b');
 
   if (room.resultReason) {
-    const winnerLabel = room.winner === 'draw' ? 'Draw' : room.winner === 'w' ? 'White' : 'Black';
     return {
       roomCode: room.code,
       fen: chess.fen(),
@@ -142,6 +158,8 @@ function stateFor(room: Room): GameState {
       reason: room.resultReason,
       drawOfferBy: room.drawOfferBy,
       rematchRequests: { ...room.rematchRequests },
+      chatMessages: room.chatMessages,
+      spectatorCount: room.spectators.length,
     };
   }
 
@@ -170,6 +188,8 @@ function stateFor(room: Room): GameState {
       reason: 'Timeout',
       drawOfferBy: room.drawOfferBy,
       rematchRequests: { ...room.rematchRequests },
+      chatMessages: room.chatMessages,
+      spectatorCount: room.spectators.length,
     };
   }
 
@@ -198,6 +218,8 @@ function stateFor(room: Room): GameState {
       reason: null,
       drawOfferBy: room.drawOfferBy,
       rematchRequests: { ...room.rematchRequests },
+      chatMessages: room.chatMessages,
+      spectatorCount: room.spectators.length,
     };
   }
 
@@ -242,6 +264,8 @@ function stateFor(room: Room): GameState {
     reason: null,
     drawOfferBy: room.drawOfferBy,
     rematchRequests: { ...room.rematchRequests },
+    chatMessages: room.chatMessages,
+    spectatorCount: room.spectators.length,
   };
 }
 
@@ -300,7 +324,26 @@ function attachSession(socket: { id: string; join: (room: string) => void; leave
   room.abandonedBy = null;
   room.lastUpdated = Date.now();
   socket.join(room.code);
-  sessionToRoom.set(player.sessionId, { roomCode: room.code, color: player.color });
+  sessionToRoom.set(player.sessionId, { roomCode: room.code, color: player.color, role: 'player' });
+}
+
+function attachSpectatorSession(socket: { id: string; join: (room: string) => void; leave: (room: string) => void; data: { sessionId?: string; roomCode?: string } }, room: Room, spectator: SpectatorRecord) {
+  if (spectator.socketId && spectator.socketId !== socket.id) {
+    const previousSocket = io.sockets.sockets.get(spectator.socketId);
+    if (previousSocket && previousSocket.id !== socket.id) {
+      previousSocket.leave(room.code);
+      previousSocket.data.sessionId = undefined;
+      previousSocket.data.roomCode = undefined;
+    }
+  }
+
+  socket.data.sessionId = spectator.sessionId;
+  socket.data.roomCode = room.code;
+  spectator.socketId = socket.id;
+  spectator.disconnected = false;
+  room.lastUpdated = Date.now();
+  socket.join(room.code);
+  sessionToRoom.set(spectator.sessionId, { roomCode: room.code, role: 'spectator' });
 }
 
 function emitPlayerAssignments(room: Room) {
@@ -315,7 +358,7 @@ function emitPlayerAssignments(room: Room) {
   if (room.black) {
     const blackSocket = room.black.socketId ? io.sockets.sockets.get(room.black.socketId) : null;
     if (blackSocket) {
-      blackSocket.emit('room-joined', { roomCode: room.code, playerColor: 'b', sessionId: room.black.sessionId });
+      blackSocket.emit('room-joined', { roomCode: room.code, playerColor: 'b', sessionId: room.black.sessionId, role: 'player' });
       blackSocket.data.sessionId = room.black.sessionId;
       blackSocket.data.roomCode = room.code;
     }
@@ -348,7 +391,7 @@ io.on('connection', (socket) => {
   emitConnectionStatus(socket, 'connected');
 
   socket.on('identify-session', ({ sessionId }) => {
-    const resolvedSessionId = sessionId?.trim() || createSessionId();
+    const resolvedSessionId = validateSessionId(sessionId) ?? createSessionId();
 
     const existingSession = sessionToRoom.get(resolvedSessionId);
     if (!existingSession) {
@@ -364,24 +407,33 @@ io.on('connection', (socket) => {
     }
 
     const player = getRoomPlayer(room, resolvedSessionId);
-    if (!player) {
+    if (player) {
+      attachSession(socket, room, player);
+      if (player.color === 'w') {
+        socket.emit('room-created', { roomCode: room.code, playerColor: 'w', sessionId: player.sessionId, hostUrl: hostUrl() });
+      } else {
+        socket.emit('room-joined', { roomCode: room.code, playerColor: 'b', sessionId: player.sessionId, role: 'player' });
+      }
+      broadcast(room);
+      return;
+    }
+
+    const spectator = getRoomSpectator(room, resolvedSessionId);
+    if (!spectator) {
       sessionToRoom.delete(resolvedSessionId);
       socket.data.sessionId = resolvedSessionId;
       return;
     }
 
-    attachSession(socket, room, player);
-    if (player.color === 'w') {
-      socket.emit('room-created', { roomCode: room.code, playerColor: 'w', sessionId: player.sessionId, hostUrl: hostUrl() });
-    } else {
-      socket.emit('room-joined', { roomCode: room.code, playerColor: 'b', sessionId: player.sessionId });
-    }
+    attachSpectatorSession(socket, room, spectator);
+    socket.emit('room-joined', { roomCode: room.code, playerColor: null, sessionId: spectator.sessionId, role: 'spectator' });
     broadcast(room);
   });
 
   socket.on('create-game', ({ playerName, sessionId, timeControl }) => {
-    const safeSessionId = sessionId?.trim() || createSessionId();
+    const safeSessionId = validateSessionId(sessionId) ?? createSessionId();
     const selectedTimeControl = normalizeTimeControl(timeControl);
+    const sanitizedName = sanitizePlayerName(playerName);
     const existingSession = sessionToRoom.get(safeSessionId);
 
     if (existingSession) {
@@ -402,8 +454,9 @@ io.on('connection', (socket) => {
     const room: Room = {
       code,
       chess: new Chess(),
-      white: { sessionId: safeSessionId, name: safeName(playerName), socketId: socket.id, color: 'w', disconnected: false, joinedAt: Date.now() },
+      white: { sessionId: safeSessionId, name: sanitizedName, socketId: socket.id, color: 'w', disconnected: false, joinedAt: Date.now() },
       black: null,
+      spectators: [],
       abandonedBy: null,
       lastUpdated: Date.now(),
       timeControl: selectedTimeControl,
@@ -415,9 +468,10 @@ io.on('connection', (socket) => {
       resultReason: null,
       drawOfferBy: null,
       rematchRequests: { w: false, b: false },
+      chatMessages: [],
     };
     rooms.set(code, room);
-    sessionToRoom.set(safeSessionId, { roomCode: code, color: 'w' });
+    sessionToRoom.set(safeSessionId, { roomCode: code, color: 'w', role: 'player' });
     const createdPlayer = room.white;
     if (!createdPlayer) {
       throw new Error('Failed to initialize room host player.');
@@ -428,8 +482,13 @@ io.on('connection', (socket) => {
   });
 
   socket.on('join-game', ({ roomCode: submittedCode, playerName, sessionId }) => {
-    const code = submittedCode.trim().toUpperCase();
-    const safeSessionId = sessionId?.trim() || createSessionId();
+    const code = normalizeRoomCode(submittedCode);
+    if (!code) {
+      socket.emit('game-error', { message: 'Enter a valid room code.' });
+      return;
+    }
+    const safeSessionId = validateSessionId(sessionId) ?? createSessionId();
+    const sanitizedName = sanitizePlayerName(playerName);
     const existingSession = sessionToRoom.get(safeSessionId);
 
     if (existingSession) {
@@ -438,7 +497,7 @@ io.on('connection', (socket) => {
         const existingPlayer = getRoomPlayer(existingRoom, safeSessionId);
         if (existingPlayer) {
           attachSession(socket, existingRoom, existingPlayer);
-          socket.emit('room-joined', { roomCode: existingRoom.code, playerColor: existingPlayer.color, sessionId: safeSessionId });
+          socket.emit('room-joined', { roomCode: existingRoom.code, playerColor: existingPlayer.color, sessionId: safeSessionId, role: 'player' });
           broadcast(existingRoom);
           return;
         }
@@ -460,14 +519,73 @@ io.on('connection', (socket) => {
       return;
     }
 
-    room.black = { sessionId: safeSessionId, name: safeName(playerName), socketId: socket.id, color: 'b', disconnected: false, joinedAt: Date.now() };
+    room.black = { sessionId: safeSessionId, name: sanitizedName, socketId: socket.id, color: 'b', disconnected: false, joinedAt: Date.now() };
     room.abandonedBy = null;
     room.lastUpdated = Date.now();
     room.drawOfferBy = null;
     room.rematchRequests = { w: false, b: false };
-    sessionToRoom.set(safeSessionId, { roomCode: code, color: 'b' });
+    room.chatMessages = [];
+    sessionToRoom.set(safeSessionId, { roomCode: code, color: 'b', role: 'player' });
     attachSession(socket, room, room.black);
-    socket.emit('room-joined', { roomCode: code, playerColor: 'b', sessionId: safeSessionId });
+    socket.emit('room-joined', { roomCode: code, playerColor: 'b', sessionId: safeSessionId, role: 'player' });
+    broadcast(room);
+  });
+
+  socket.on('join-spectator', ({ roomCode: submittedCode, playerName, sessionId }) => {
+    const code = normalizeRoomCode(submittedCode);
+    if (!code) {
+      socket.emit('game-error', { message: 'Enter a valid room code.' });
+      return;
+    }
+    const safeSessionId = validateSessionId(sessionId) ?? createSessionId();
+    const sanitizedName = sanitizePlayerName(playerName ?? 'Spectator');
+    const existingSession = sessionToRoom.get(safeSessionId);
+
+    if (existingSession) {
+      const existingRoom = rooms.get(existingSession.roomCode);
+      if (existingRoom) {
+        if (existingSession.role === 'spectator') {
+          const existingSpectator = getRoomSpectator(existingRoom, safeSessionId);
+          if (existingSpectator) {
+            attachSpectatorSession(socket, existingRoom, existingSpectator);
+            socket.emit('room-joined', { roomCode: existingRoom.code, playerColor: null, sessionId: safeSessionId, role: 'spectator' });
+            broadcast(existingRoom);
+            return;
+          }
+        }
+
+        const existingPlayer = getRoomPlayer(existingRoom, safeSessionId);
+        if (existingPlayer) {
+          attachSession(socket, existingRoom, existingPlayer);
+          socket.emit('room-joined', { roomCode: existingRoom.code, playerColor: existingPlayer.color, sessionId: safeSessionId, role: 'player' });
+          broadcast(existingRoom);
+          return;
+        }
+      }
+      sessionToRoom.delete(safeSessionId);
+    }
+
+    const room = rooms.get(code);
+    if (!room) {
+      socket.emit('game-error', { message: 'Room not found. Check the room code and try again.' });
+      return;
+    }
+    if (room.spectators.length >= MAX_SPECTATORS) {
+      socket.emit('game-error', { message: `This room already has the maximum spectator count (${MAX_SPECTATORS}).` });
+      return;
+    }
+
+    const spectator: SpectatorRecord = {
+      sessionId: safeSessionId,
+      name: sanitizedName,
+      socketId: socket.id,
+      joinedAt: Date.now(),
+      disconnected: false,
+    };
+    room.spectators = [...room.spectators.filter((entry) => entry.sessionId !== safeSessionId), spectator];
+    room.lastUpdated = Date.now();
+    attachSpectatorSession(socket, room, spectator);
+    socket.emit('room-joined', { roomCode: code, playerColor: null, sessionId: safeSessionId, role: 'spectator' });
     broadcast(room);
   });
 
@@ -477,6 +595,11 @@ io.on('connection', (socket) => {
       socket.emit('game-error', { message: 'Session not identified. Refresh and try again.' });
       return;
     }
+    if (!isChessSquare(from) || !isChessSquare(to)) {
+      socket.emit('game-error', { message: 'Invalid move coordinates.' });
+      return;
+    }
+    const normalizedPromotion = normalizePromotion(promotion);
 
     const session = sessionToRoom.get(sessionId);
     if (!session) {
@@ -487,6 +610,10 @@ io.on('connection', (socket) => {
     const room = rooms.get(session.roomCode);
     if (!room || !room.black) {
       socket.emit('game-error', { message: 'Join a two-player room before moving.' });
+      return;
+    }
+    if (session.role !== 'player') {
+      socket.emit('game-error', { message: 'Spectators cannot make moves.' });
       return;
     }
 
@@ -525,7 +652,7 @@ io.on('connection', (socket) => {
         if (color === 'w') room.whiteTimeMs = Math.max(0, previousTime - elapsed);
         else room.blackTimeMs = Math.max(0, previousTime - elapsed);
       }
-      room.chess.move({ from, to, promotion });
+      room.chess.move({ from, to, promotion: normalizedPromotion });
       room.turnStartedAt = Date.now();
       room.lastUpdated = Date.now();
       room.drawOfferBy = null;
@@ -629,6 +756,10 @@ io.on('connection', (socket) => {
       socket.emit('game-error', { message: 'Session not identified. Refresh and try again.' });
       return;
     }
+    if (typeof accept !== 'boolean') {
+      socket.emit('game-error', { message: 'Invalid draw response.' });
+      return;
+    }
     const session = sessionToRoom.get(sessionId);
     if (!session) {
       socket.emit('game-error', { message: 'You are not in an active room.' });
@@ -712,8 +843,8 @@ io.on('connection', (socket) => {
           nextBlackSocket.join(room.code);
         }
 
-        sessionToRoom.set(nextWhitePlayer.sessionId, { roomCode: room.code, color: 'w' });
-        sessionToRoom.set(nextBlackPlayer.sessionId, { roomCode: room.code, color: 'b' });
+        sessionToRoom.set(nextWhitePlayer.sessionId, { roomCode: room.code, color: 'w', role: 'player' });
+        sessionToRoom.set(nextBlackPlayer.sessionId, { roomCode: room.code, color: 'b', role: 'player' });
       }
 
       room.chess = new Chess();
@@ -726,6 +857,7 @@ io.on('connection', (socket) => {
       room.drawOfferBy = null;
       room.rematchRequests = { w: false, b: false };
       room.abandonedBy = null;
+      room.chatMessages = [];
       room.lastUpdated = Date.now();
       emitPlayerAssignments(room);
       broadcast(room);
@@ -739,6 +871,10 @@ io.on('connection', (socket) => {
     const sessionId = socket.data.sessionId;
     if (!sessionId) {
       socket.emit('game-error', { message: 'Session not identified. Refresh and try again.' });
+      return;
+    }
+    if (typeof accept !== 'boolean') {
+      socket.emit('game-error', { message: 'Invalid rematch response.' });
       return;
     }
 
@@ -769,6 +905,7 @@ io.on('connection', (socket) => {
       room.rematchRequests[player.color] = true;
     } else {
       room.rematchRequests = { w: false, b: false };
+      room.chatMessages = [];
       broadcast(room);
       return;
     }
@@ -798,8 +935,8 @@ io.on('connection', (socket) => {
           nextBlackSocket.join(room.code);
         }
 
-        sessionToRoom.set(nextWhitePlayer.sessionId, { roomCode: room.code, color: 'w' });
-        sessionToRoom.set(nextBlackPlayer.sessionId, { roomCode: room.code, color: 'b' });
+        sessionToRoom.set(nextWhitePlayer.sessionId, { roomCode: room.code, color: 'w', role: 'player' });
+        sessionToRoom.set(nextBlackPlayer.sessionId, { roomCode: room.code, color: 'b', role: 'player' });
       }
 
       room.chess = new Chess();
@@ -812,12 +949,70 @@ io.on('connection', (socket) => {
       room.drawOfferBy = null;
       room.rematchRequests = { w: false, b: false };
       room.abandonedBy = null;
+      room.chatMessages = [];
       room.lastUpdated = Date.now();
       emitPlayerAssignments(room);
       broadcast(room);
       return;
     }
 
+    broadcast(room);
+  });
+
+  socket.on('send-chat', ({ message }) => {
+    const sessionId = socket.data.sessionId;
+    if (!sessionId) {
+      socket.emit('game-error', { message: 'Session not identified. Refresh and try again.' });
+      return;
+    }
+
+    const session = sessionToRoom.get(sessionId);
+    if (!session) {
+      socket.emit('game-error', { message: 'You are not in an active room.' });
+      return;
+    }
+
+    const room = rooms.get(session.roomCode);
+    if (!room || !room.black) {
+      socket.emit('game-error', { message: 'Join a room before sending a message.' });
+      return;
+    }
+
+    const player = getRoomPlayer(room, sessionId);
+    const spectator = getRoomSpectator(room, sessionId);
+    if (!player && !spectator) {
+      socket.emit('game-error', { message: 'You are not in this room.' });
+      return;
+    }
+    if (room.resultReason) {
+      socket.emit('game-error', { message: 'Chat closes once the room ends.' });
+      return;
+    }
+
+    const sanitized = sanitizeChatMessage(message);
+    if (!sanitized) {
+      socket.emit('game-error', { message: 'Message is empty or invalid.' });
+      return;
+    }
+    if (sanitized.length > MAX_CHAT_MESSAGE_LENGTH) {
+      socket.emit('game-error', { message: `Chat messages are limited to ${MAX_CHAT_MESSAGE_LENGTH} characters.` });
+      return;
+    }
+
+    const lastChatAt = Number(socket.data.lastChatAt ?? 0);
+    if (Date.now() - lastChatAt < 800) {
+      socket.emit('game-error', { message: 'Please slow down. Try again in a moment.' });
+      return;
+    }
+    socket.data.lastChatAt = Date.now();
+
+    room.chatMessages = [...room.chatMessages.slice(-19), {
+      id: `chat-${randomBytes(8).toString('hex')}`,
+      sender: player?.name ?? spectator?.name ?? 'Spectator',
+      message: sanitized,
+      color: player?.color ?? 'system',
+      sentAt: Date.now(),
+    }];
     broadcast(room);
   });
 
@@ -841,37 +1036,43 @@ io.on('connection', (socket) => {
     }
 
     const player = getRoomPlayer(room, sessionId);
-    if (!player) {
-      sessionToRoom.delete(sessionId);
-      socket.data.sessionId = undefined;
-      socket.data.roomCode = undefined;
-      return;
-    }
+    const spectator = getRoomSpectator(room, sessionId);
 
     socket.leave(room.code);
     socket.data.sessionId = undefined;
     socket.data.roomCode = undefined;
     sessionToRoom.delete(sessionId);
 
-    if (room.white?.sessionId === sessionId) room.white = null;
-    if (room.black?.sessionId === sessionId) room.black = null;
+    if (player) {
+      if (room.white?.sessionId === sessionId) room.white = null;
+      if (room.black?.sessionId === sessionId) room.black = null;
 
-    clearRoomCleanup(room.code);
+      clearRoomCleanup(room.code);
 
-    if (!room.white && !room.black) {
-      rooms.delete(room.code);
+      if (!room.white && !room.black) {
+        rooms.delete(room.code);
+        return;
+      }
+
+      const remainingPlayer = room.white ?? room.black;
+      if (remainingPlayer) {
+        remainingPlayer.socketId = null;
+        remainingPlayer.disconnected = true;
+        room.abandonedBy = remainingPlayer.color;
+        room.lastUpdated = Date.now();
+        scheduleRoomCleanup(room, remainingPlayer.color);
+      }
+      broadcast(room);
       return;
     }
 
-    const remainingPlayer = room.white ?? room.black;
-    if (remainingPlayer) {
-      remainingPlayer.socketId = null;
-      remainingPlayer.disconnected = true;
-      room.abandonedBy = remainingPlayer.color;
+    if (spectator) {
+      room.spectators = room.spectators.filter((entry) => entry.sessionId !== sessionId);
       room.lastUpdated = Date.now();
-      scheduleRoomCleanup(room, remainingPlayer.color);
+      if (room.white || room.black || room.spectators.length) {
+        broadcast(room);
+      }
     }
-    broadcast(room);
   });
 
   socket.on('disconnect', () => {
@@ -888,35 +1089,43 @@ io.on('connection', (socket) => {
     }
 
     const player = getRoomPlayer(room, sessionId);
-    if (!player) {
-      sessionToRoom.delete(sessionId);
-      return;
-    }
-
-    if (player.socketId !== socket.id) {
-      return;
-    }
-
-    player.socketId = null;
-    player.disconnected = true;
-    room.lastUpdated = Date.now();
-
-    if (room.white?.disconnected && room.black?.disconnected) {
-      if (room.abandonedBy === null) room.abandonedBy = room.white.disconnected ? 'w' : 'b';
-      if (room.black) {
-        sessionToRoom.delete(room.black.sessionId);
+    const spectator = getRoomSpectator(room, sessionId);
+    if (player) {
+      if (player.socketId !== socket.id) {
+        return;
       }
-      if (room.white) {
-        sessionToRoom.delete(room.white.sessionId);
+
+      player.socketId = null;
+      player.disconnected = true;
+      room.lastUpdated = Date.now();
+
+      if (room.white?.disconnected && room.black?.disconnected) {
+        if (room.abandonedBy === null) room.abandonedBy = room.white.disconnected ? 'w' : 'b';
+        if (room.black) {
+          sessionToRoom.delete(room.black.sessionId);
+        }
+        if (room.white) {
+          sessionToRoom.delete(room.white.sessionId);
+        }
+        rooms.delete(room.code);
+        clearRoomCleanup(room.code);
+        return;
       }
-      rooms.delete(room.code);
+
       clearRoomCleanup(room.code);
+      scheduleRoomCleanup(room, player.color);
+      broadcast(room);
       return;
     }
 
-    clearRoomCleanup(room.code);
-    scheduleRoomCleanup(room, player.color);
-    broadcast(room);
+    if (spectator) {
+      spectator.socketId = null;
+      spectator.disconnected = true;
+      room.spectators = room.spectators.filter((entry) => entry.sessionId !== sessionId);
+      room.lastUpdated = Date.now();
+      sessionToRoom.delete(sessionId);
+      broadcast(room);
+    }
   });
 });
 
