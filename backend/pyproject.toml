@@ -1,0 +1,34 @@
+[project]
+name = "multi-agent-workspace-backend"
+version = "0.1.0"
+description = "Multi-Agent AI Workspace - FastAPI backend"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "sqlalchemy>=2.0",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "python-dotenv>=1.0",
+    "httpx>=0.27",
+    "anyio>=4.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+    "anyio>=4.6",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "backend/tests"]
+asyncio_mode = "auto"
+addopts = "-q"
+norecursedirs = ["workspace", "frontend", "node_modules", ".git", "backend/data", "dist", "build", "__pycache__"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

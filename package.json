@@ -1,0 +1,22 @@
+{
+  "name": "multi-agent-workspace",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Multi-Agent AI Workspace — local-first Windows dev",
+  "scripts": {
+    "dev": "powershell -ExecutionPolicy Bypass -File ./start-dev.ps1",
+    "dev:backend": "python -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000 --reload",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:concurrent": "concurrently \"python -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000 --reload\" \"npm --prefix frontend run dev\"",
+    "install:all": "pip install -r backend/requirements.txt && npm --prefix frontend install",
+    "test": "python -m pytest -q",
+    "test:frontend": "npm --prefix frontend run test",
+    "typecheck": "npm --prefix frontend run typecheck",
+    "build": "npm --prefix frontend run build",
+    "health": "curl.exe -s http://127.0.0.1:8000/api/health"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

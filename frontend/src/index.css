@@ -1,0 +1,38 @@
+:root {
+  --bg: #0e0f12;
+  --bg-soft: #16181d;
+  --bg-elev: #1c1f26;
+  --border: #242832;
+  --border-strong: #2e3442;
+  --text: #c8ceda;
+  --text-muted: #8b93a7;
+  --text-h: #f1f3f8;
+  --accent: #6d8cff;
+  --accent-2: #8b5cf6;
+  --success: #22c55e;
+  --warn: #f59e0b;
+  --error: #ef4444;
+  --radius: 10px;
+  --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+  --sans: "Inter", system-ui, Segoe UI, Roboto, sans-serif;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; }
+body {
+  font: 14px/1.5 var(--sans);
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); }
+code {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  background: #0f172a;
+  border: 1px solid var(--border);
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+#root { min-height: 100vh; display: flex; flex-direction: column; }
