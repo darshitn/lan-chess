@@ -2,7 +2,14 @@ export type PlayerColor = 'w' | 'b';
 export type PromotionPiece = 'q' | 'r' | 'b' | 'n';
 export type CapturedPiece = 'p' | 'n' | 'b' | 'r' | 'q' | 'k';
 export type ConnectionStatus = 'connected' | 'connecting' | 'reconnecting' | 'disconnected';
-export type TimeControl = 'unlimited' | '3+0' | '5+0' | '10+0' | '15+10';
+export type TimeControl =
+  | 'unlimited'
+  // Bullet
+  | '1+0' | '1+1' | '2+1'
+  // Blitz
+  | '3+0' | '3+2' | '5+0'
+  // Rapid
+  | '10+0' | '10+5' | '15+10';
 
 export interface ServerStatus { online: boolean; lanIp: string | null; port: number; }
 export interface ClockUpdate { roomCode: string; whiteTimeMs: number | null; blackTimeMs: number | null; }

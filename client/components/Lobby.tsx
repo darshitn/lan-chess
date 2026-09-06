@@ -1,5 +1,6 @@
 import React from 'react';
 import type { TimeControl } from '../../shared/types.js';
+import { formatTimeControl, TIME_CONTROL_GROUPS } from '../utils/chess-helpers.js';
 
 interface LobbyProps {
   playerName: string;
@@ -8,6 +9,7 @@ interface LobbyProps {
   onRoomCodeChange: (code: string) => void;
   timeControl: TimeControl;
   onTimeControlChange: (tc: TimeControl) => void;
+  recentTimeControls: TimeControl[];
   allowTakebacks: boolean;
   onAllowTakebacksChange: (allow: boolean) => void;
   onCreateGame: () => void;
@@ -19,14 +21,6 @@ interface LobbyProps {
   isConnecting: boolean;
 }
 
-const TIME_CONTROLS: Array<{ value: TimeControl; label: string; desc: string }> = [
-  { value: '3+0', label: '3 min', desc: 'Blitz' },
-  { value: '5+0', label: '5 min', desc: 'Rapid' },
-  { value: '10+0', label: '10 min', desc: 'Standard' },
-  { value: '15+10', label: '15 min', desc: 'Classical' },
-  { value: 'unlimited', label: 'No Clock', desc: 'Casual' },
-];
-
 export const Lobby: React.FC<LobbyProps> = ({
   playerName,
   onNameChange,
@@ -34,6 +28,7 @@ export const Lobby: React.FC<LobbyProps> = ({
   onRoomCodeChange,
   timeControl,
   onTimeControlChange,
+  recentTimeControls,
   allowTakebacks,
   onAllowTakebacksChange,
   onCreateGame,
@@ -112,26 +107,46 @@ export const Lobby: React.FC<LobbyProps> = ({
             <span className="block text-xs font-bold uppercase tracking-wider text-slate-400">
               Time Control
             </span>
-            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
-              {TIME_CONTROLS.map((tc) => {
-                const isSelected = timeControl === tc.value;
-                return (
-                  <button
-                    key={tc.value}
-                    type="button"
-                    onClick={() => onTimeControlChange(tc.value)}
-                    className={`flex flex-col items-center justify-center rounded-lg border p-2 text-center transition-all ${
-                      isSelected
-                        ? 'border-amber-400 bg-amber-400/10 text-amber-300 font-bold shadow-sm'
-                        : 'border-slate-700 bg-slate-800/60 text-slate-300 hover:border-slate-600'
-                    }`}
-                  >
-                    <span className="text-xs font-semibold">{tc.label}</span>
-                    <span className="text-[9px] uppercase tracking-wider opacity-70">{tc.desc}</span>
-                  </button>
-                );
-              })}
-            </div>
+
+            {recentTimeControls.length > 0 && (
+              <div className="mt-3">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+                  🕐 Recent
+                </span>
+                <div className="mt-1 grid grid-cols-3 gap-2">
+                  {recentTimeControls.map((tc) => (
+                    <TimeControlButton
+                      key={`recent-${tc}`}
+                      value={tc}
+                      label={formatTimeControl(tc)}
+                      selected={timeControl === tc}
+                      onSelect={onTimeControlChange}
+                      disabled={isConnecting}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {TIME_CONTROL_GROUPS.map((group) => (
+              <div key={group.category} className="mt-3">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  {group.icon} {group.category}
+                </span>
+                <div className="mt-1 grid grid-cols-3 gap-2">
+                  {group.controls.map((tc) => (
+                    <TimeControlButton
+                      key={tc}
+                      value={tc}
+                      label={formatTimeControl(tc)}
+                      selected={timeControl === tc}
+                      onSelect={onTimeControlChange}
+                      disabled={isConnecting}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
 
           <div className="mt-4 border-t border-slate-800/80 pt-3">
@@ -205,3 +220,27 @@ export const Lobby: React.FC<LobbyProps> = ({
     </main>
   );
 };
+
+interface TimeControlButtonProps {
+  value: TimeControl;
+  label: string;
+  selected: boolean;
+  onSelect: (tc: TimeControl) => void;
+  disabled?: boolean;
+}
+
+const TimeControlButton: React.FC<TimeControlButtonProps> = ({ value, label, selected, onSelect, disabled }) => (
+  <button
+    type="button"
+    aria-pressed={selected}
+    onClick={() => onSelect(value)}
+    disabled={disabled}
+    className={`rounded-lg border p-2 text-center text-xs font-semibold transition-all ${
+      selected
+        ? 'border-emerald-400 bg-emerald-400/10 text-emerald-300 font-bold shadow-sm'
+        : 'border-slate-700 bg-slate-800/60 text-slate-300 hover:border-slate-600'
+    } disabled:opacity-50`}
+  >
+    {label}
+  </button>
+);

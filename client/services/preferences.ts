@@ -138,6 +138,18 @@ export const BUILTIN_BOARD_THEMES: BoardTheme[] = [
     checkmateSquare: '#b91c1c',
   },
   {
+    id: 'stone',
+    name: 'Stone',
+    description: 'Cool silver squares on warm stone gray',
+    lightSquare: '#cdd1d4',
+    darkSquare: '#7d7461',
+    selectedSquare: '#f5c542',
+    lastMoveSquare: '#dbd07a',
+    legalMoveColor: 'rgba(20, 25, 30, 0.3)',
+    checkSquare: '#e55c57',
+    checkmateSquare: '#cc2929',
+  },
+  {
     id: 'golden',
     name: 'Golden',
     description: 'Gilded championship amber and gold',
@@ -315,6 +327,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   preferredColor: 'random',
   playerName: 'Player',
   avatar: '♟',
+  recentlyUsedTimeControls: [],
 };
 
 const STORAGE_KEYS = {
@@ -396,6 +409,12 @@ export function loadUserPreferences(): UserPreferences {
       preferredColor: oneOf(parsed.preferredColor, PREFERRED_COLORS, DEFAULT_PREFERENCES.preferredColor),
       playerName: stringOr(parsed.playerName, DEFAULT_PREFERENCES.playerName, 24),
       avatar: stringOr(parsed.avatar, DEFAULT_PREFERENCES.avatar, 8),
+      recentlyUsedTimeControls: Array.isArray(parsed.recentlyUsedTimeControls)
+        ? parsed.recentlyUsedTimeControls.filter(
+            (tc: unknown): tc is string =>
+              typeof tc === 'string' && /^\d+\+(0|[1-9]\d*)$/.test(tc) || tc === 'unlimited'
+          ).slice(0, 3)
+        : [],
     };
   } catch {
     return DEFAULT_PREFERENCES;

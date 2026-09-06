@@ -31,7 +31,7 @@ import {
   playCheckSound,
   playGameOverSound,
 } from './utils/sound.js';
-import { getCapturedPiecesAndScore } from './utils/chess-helpers.js';
+import { getCapturedPiecesAndScore, isKnownTimeControl } from './utils/chess-helpers.js';
 import { identifyOpening } from './utils/openings.js';
 import {
   loadUserPreferences,
@@ -146,7 +146,10 @@ export function App() {
   const [flipped, setFlipped] = useState(false);
   const [pendingPromotion, setPendingPromotion] = useState<{ from: Square; to: Square } | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
-  const [timeControl, setTimeControl] = useState<TimeControl>('3+0');
+  const [timeControl, setTimeControl] = useState<TimeControl>(() => {
+    const first = preferences.recentlyUsedTimeControls[0];
+    return isKnownTimeControl(first) ? first : '3+0';
+  });
   const [allowTakebacks, setAllowTakebacks] = useState(true);
 
   const prevMovesCountRef = useRef(0);
@@ -539,6 +542,12 @@ export function App() {
   }, [gameState, canMove, canPremove, pendingPromotion, chess, color, premove]);
 
   // Lobby actions
+  const handleTimeControlChange = (tc: TimeControl) => {
+    setTimeControl(tc);
+    const recents = [tc, ...preferences.recentlyUsedTimeControls.filter((t) => t !== tc)].slice(0, 3);
+    handleUpdatePreferences({ ...preferences, recentlyUsedTimeControls: recents });
+  };
+
   const handleCreateGame = () => {
     const sessionId = getStoredSessionId();
     socket.emit(SOCKET_EVENTS.CREATE_GAME, {
@@ -800,7 +809,8 @@ export function App() {
           roomCode={roomCodeInput}
           onRoomCodeChange={setRoomCodeInput}
           timeControl={timeControl}
-          onTimeControlChange={setTimeControl}
+          onTimeControlChange={handleTimeControlChange}
+          recentTimeControls={preferences.recentlyUsedTimeControls.filter(isKnownTimeControl)}
           allowTakebacks={allowTakebacks}
           onAllowTakebacksChange={setAllowTakebacks}
           onCreateGame={handleCreateGame}

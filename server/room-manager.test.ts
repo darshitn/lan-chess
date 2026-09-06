@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TimeControl } from '../shared/types.js';
-import { RoomManager, RECONNECT_GRACE_PERIOD_MS, timeControlToMs } from './room-manager.js';
+import { RoomManager, RECONNECT_GRACE_PERIOD_MS, normalizeTimeControl, timeControlToMs } from './room-manager.js';
 
 function createGameOrFail(
   mgr: RoomManager,
@@ -220,9 +220,54 @@ describe('RoomManager', () => {
 
   it('timeControlToMs produces correct millisecond limits', () => {
     expect(timeControlToMs('unlimited')).toBeNull();
+    expect(timeControlToMs('1+0')).toBe(60_000);
+    expect(timeControlToMs('1+1')).toBe(60_000);
+    expect(timeControlToMs('2+1')).toBe(120_000);
     expect(timeControlToMs('3+0')).toBe(180000);
+    expect(timeControlToMs('3+2')).toBe(180000);
     expect(timeControlToMs('5+0')).toBe(300000);
     expect(timeControlToMs('10+0')).toBe(600000);
+    expect(timeControlToMs('10+5')).toBe(600000);
+    expect(timeControlToMs('15+10')).toBe(900000);
+  });
+
+  it('normalizes unknown or legacy time control values to a known preset', () => {
+    expect(normalizeTimeControl('3+2')).toBe('3+2');
+    expect(normalizeTimeControl('10+5')).toBe('10+5');
+    expect(normalizeTimeControl('99+99')).toBe('3+0');
+    expect(normalizeTimeControl(undefined)).toBe('3+0');
+    expect(normalizeTimeControl(42)).toBe('3+0');
+  });
+
+  it('credits the Fischer increment after each completed move', () => {
+    const mgr = new RoomManager();
+    const { room, player: white } = createGameOrFail(mgr, 'Alice', 'session-w-1', '3+2');
+    mgr.joinGame(room.code, 'Bob', 'session-b-2');
+
+    // White thinks for 2 seconds, then moves: 180000 - 2000 + 2000 = 180000
+    const moveStart = room.turnStartedAt;
+    vi.advanceTimersByTime(2_000);
+    mgr.makeMove(room, white.sessionId, 'e2', 'e4');
+    expect(room.whiteTimeMs).toBeLessThanOrEqual(180_000);
+    expect(room.whiteTimeMs).toBeGreaterThan(178_500); // 180s - 2s + 2s (small timing slack)
+    void moveStart;
+
+    // Black thinks for 1 second: 180000 - 1000 + 2000 = 181000
+    vi.advanceTimersByTime(1_000);
+    mgr.makeMove(room, 'session-b-2', 'e7', 'e5');
+    expect(room.blackTimeMs).toBeGreaterThan(179_500);
+    expect(room.blackTimeMs).toBeLessThanOrEqual(181_000);
+  });
+
+  it('does not credit any increment on no-increment controls', () => {
+    const mgr = new RoomManager();
+    const { room, player: white } = createGameOrFail(mgr, 'Alice', 'session-w-1', '1+0');
+    mgr.joinGame(room.code, 'Bob', 'session-b-2');
+
+    vi.advanceTimersByTime(1_500);
+    mgr.makeMove(room, white.sessionId, 'e2', 'e4');
+    expect(room.whiteTimeMs).toBeLessThanOrEqual(58_500);
+    expect(room.whiteTimeMs).toBeGreaterThan(57_000);
   });
 
   describe('game lifecycle integrity', () => {

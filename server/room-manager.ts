@@ -79,19 +79,36 @@ export function createSessionId(): string {
   return `session-${randomBytes(12).toString('hex')}`;
 }
 
+const KNOWN_TIME_CONTROLS: readonly TimeControl[] = [
+  'unlimited',
+  '1+0', '1+1', '2+1',
+  '3+0', '3+2', '5+0',
+  '10+0', '10+5', '15+10',
+];
+
 export function normalizeTimeControl(value?: unknown): TimeControl {
-  if (value === 'unlimited' || value === '3+0' || value === '5+0' || value === '10+0' || value === '15+10') {
-    return value;
+  if (typeof value === 'string' && (KNOWN_TIME_CONTROLS as readonly string[]).includes(value)) {
+    return value as TimeControl;
   }
   return '3+0';
 }
 
+function minutesOf(timeControl: TimeControl): number {
+  const base = timeControl.split('+')[0];
+  const parsed = Number(base);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 3;
+}
+
 export function timeControlToMs(timeControl: TimeControl): number | null {
   if (timeControl === 'unlimited') return null;
-  if (timeControl === '3+0') return 3 * 60 * 1000;
-  if (timeControl === '5+0') return 5 * 60 * 1000;
-  if (timeControl === '15+10') return 15 * 60 * 1000;
-  return 10 * 60 * 1000;
+  return minutesOf(timeControl) * 60 * 1000;
+}
+
+/** Fischer increment in milliseconds (0 for no-increment controls). */
+export function incrementMsOf(timeControl: TimeControl): number {
+  if (timeControl === 'unlimited') return 0;
+  const inc = Number(timeControl.split('+')[1]);
+  return Number.isFinite(inc) && inc > 0 ? inc * 1000 : 0;
 }
 
 export class RoomManager {
@@ -617,12 +634,13 @@ export class RoomManager {
       return { error: 'That move is not legal.' };
     }
 
-    // Move succeeded: deduct elapsed time safely
+    // Move succeeded: deduct elapsed time safely, then credit the Fischer
+    // increment for the completed move.
     if (room.timeControl !== 'unlimited') {
       const previousTime = color === 'w' ? room.whiteTimeMs : room.blackTimeMs;
       const elapsed = Date.now() - room.turnStartedAt;
       if (previousTime !== null) {
-        const updatedTime = Math.max(0, previousTime - elapsed);
+        const updatedTime = Math.max(0, previousTime - elapsed) + incrementMsOf(room.timeControl);
         if (color === 'w') room.whiteTimeMs = updatedTime;
         else room.blackTimeMs = updatedTime;
       }

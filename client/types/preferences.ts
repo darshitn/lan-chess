@@ -61,6 +61,7 @@ export interface UserPreferences {
   preferredColor: 'w' | 'b' | 'random';
   playerName: string;
   avatar: string;
+  recentlyUsedTimeControls: string[]; // TimeControl values, most recent first (max 3)
 }
 
 export interface OneClickPreset {
