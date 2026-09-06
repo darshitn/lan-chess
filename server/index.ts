@@ -1,1153 +1,614 @@
-import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import express from 'express';
-import { Chess } from 'chess.js';
 import { Server } from 'socket.io';
-import type { ChatMessage, ClientToServerEvents, GameState, PlayerColor, PromotionPiece, ServerStatus, ServerToClientEvents, TimeControl } from '../shared/types.js';
+import {
+  type ClientToServerEvents,
+  type PlayerColor,
+  type ServerStatus,
+  type ServerToClientEvents,
+  SOCKET_EVENTS,
+} from '../shared/types.js';
 import { getLanIp } from './network.js';
-import { isChessSquare, MAX_CHAT_MESSAGE_LENGTH, MAX_PLAYER_NAME_LENGTH, MAX_ROOM_CODE_LENGTH, normalizePromotion, normalizeRoomCode, sanitizeChatMessage, sanitizePlayerName, validateSessionId } from './validation.js';
+import { RoomManager, type Room } from './room-manager.js';
+import {
+  MAX_CHAT_MESSAGE_LENGTH,
+  sanitizeChatMessage,
+} from './validation.js';
+
+interface SocketData {
+  sessionId?: string;
+  roomCode?: string;
+  lastChatAt?: number;
+}
 
 const PORT = Number(process.env.PORT ?? 3001);
 const HOST = '0.0.0.0';
-const RECONNECT_GRACE_PERIOD_MS = Number(process.env.RECONNECT_GRACE_PERIOD_MS ?? 30000);
-const MAX_SPECTATORS = Number(process.env.MAX_SPECTATORS ?? 8);
+
 const app = express();
 const httpServer = createServer(app);
-const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, { cors: { origin: true } });
+const io = new Server<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>(httpServer, {
+  cors: { origin: true },
+});
 
-interface PlayerRecord {
-  sessionId: string;
-  name: string;
-  socketId: string | null;
-  color: PlayerColor;
-  disconnected: boolean;
-  joinedAt: number;
-}
+const roomManager = new RoomManager();
 
-interface SpectatorRecord {
-  sessionId: string;
-  name: string;
-  socketId: string | null;
-  joinedAt: number;
-  disconnected: boolean;
-}
-
-interface Room {
-  code: string;
-  chess: Chess;
-  white: PlayerRecord | null;
-  black: PlayerRecord | null;
-  spectators: SpectatorRecord[];
-  abandonedBy: PlayerColor | null;
-  lastUpdated: number;
-  timeControl: TimeControl;
-  whiteTimeMs: number | null;
-  blackTimeMs: number | null;
-  turnStartedAt: number;
-  timeoutColor: PlayerColor | null;
-  winner: PlayerColor | 'draw' | null;
-  resultReason: string | null;
-  drawOfferBy: PlayerColor | null;
-  rematchRequests: Record<PlayerColor, boolean>;
-  chatMessages: ChatMessage[];
-}
-
-const rooms = new Map<string, Room>();
-const sessionToRoom = new Map<string, { roomCode: string; color?: PlayerColor; role: 'player' | 'spectator' }>();
-const cleanupTimers = new Map<string, NodeJS.Timeout>();
-
-const safeName = sanitizePlayerName;
-const createSessionId = () => `session-${randomBytes(12).toString('hex')}`;
-const normalizeTimeControl = (value?: TimeControl): TimeControl => {
-  if (value === 'unlimited' || value === '3+0' || value === '5+0' || value === '10+0') return value;
-  return '3+0';
-};
-const timeControlToMs = (timeControl: TimeControl): number | null => {
-  if (timeControl === 'unlimited') return null;
-  if (timeControl === '3+0') return 3 * 60 * 1000;
-  if (timeControl === '5+0') return 5 * 60 * 1000;
-  return 10 * 60 * 1000;
-};
-
-function roomCode() {
-  let code = '';
-  do {
-    code = randomBytes(3).toString('base64url').toUpperCase().slice(0, 5);
-  } while (rooms.has(code));
-  return code;
-}
-
-function getRoomPlayer(room: Room, sessionId: string): PlayerRecord | null {
-  if (room.white?.sessionId === sessionId) return room.white;
-  if (room.black?.sessionId === sessionId) return room.black;
-  return null;
-}
-
-function getRoomSpectator(room: Room, sessionId: string): SpectatorRecord | null {
-  return room.spectators.find((spectator) => spectator.sessionId === sessionId) ?? null;
-}
-
-function hostUrl() {
+function getHostUrl(): string | null {
   const ip = getLanIp();
   return ip ? `http://${ip}:${PORT}` : null;
 }
 
-function getRemainingTime(room: Room, color: PlayerColor): number | null {
-  if (room.timeControl === 'unlimited') return null;
-  const activeColor = room.chess.turn();
-  const baseTime = color === 'w' ? room.whiteTimeMs : room.blackTimeMs;
-  if (baseTime === null) return null;
-  if (activeColor !== color) return baseTime;
-  return Math.max(0, baseTime - (Date.now() - room.turnStartedAt));
+function broadcastRoomState(room: Room) {
+  const state = roomManager.stateFor(room);
+  io.to(room.code).emit(SOCKET_EVENTS.GAME_STATE, state);
 }
 
-function normalizeResultMessage(room: Room): string {
-  if (room.resultReason) return room.resultReason;
-  if (room.drawOfferBy) {
-    const playerName = room.drawOfferBy === 'w' ? room.white?.name ?? 'White' : room.black?.name ?? 'Black';
-    return `Draw offered by ${playerName}.`;
-  }
-  if (room.rematchRequests.w || room.rematchRequests.b) {
-    const whoRequested = [room.rematchRequests.w ? room.white?.name : null, room.rematchRequests.b ? room.black?.name : null].filter(Boolean).join(' and ');
-    return `Rematch requested by ${whoRequested ?? 'players'}.`;
-  }
-  return 'Waiting for opponent...';
-}
-
-function finishRoom(room: Room, winner: PlayerColor | 'draw', reason: string) {
-  room.winner = winner;
-  room.resultReason = reason;
-  room.drawOfferBy = null;
-  room.rematchRequests = { w: false, b: false };
-  room.timeoutColor = null;
-  room.abandonedBy = null;
-  room.chatMessages = [];
-  broadcast(room);
-}
-
-function stateFor(room: Room): GameState {
-  const chess = room.chess;
-  const timeControl = room.timeControl;
-  const whiteTimeMs = room.timeControl === 'unlimited' ? null : getRemainingTime(room, 'w');
-  const blackTimeMs = room.timeControl === 'unlimited' ? null : getRemainingTime(room, 'b');
-
-  if (room.resultReason) {
-    return {
+function emitAssignments(room: Room) {
+  if (room.white?.socketId) {
+    io.to(room.white.socketId).emit(SOCKET_EVENTS.ROOM_JOINED, {
       roomCode: room.code,
-      fen: chess.fen(),
-      turn: chess.turn(),
-      whiteName: room.white?.name ?? 'White',
-      blackName: room.black?.name ?? null,
-      status: 'finished',
-      message: room.resultReason,
-      moves: chess.history({ verbose: true }).map((move) => ({
-        from: move.from,
-        to: move.to,
-        san: move.san,
-        color: move.color,
-        captured: move.captured as GameState['moves'][number]['captured'],
-        promotion: move.promotion as GameState['moves'][number]['promotion'],
-      })),
-      timeControl,
-      whiteTimeMs,
-      blackTimeMs,
-      winner: room.winner,
-      reason: room.resultReason,
-      drawOfferBy: room.drawOfferBy,
-      rematchRequests: { ...room.rematchRequests },
-      chatMessages: room.chatMessages,
-      spectatorCount: room.spectators.length,
-    };
+      playerColor: 'w',
+      sessionId: room.white.sessionId,
+      role: 'player',
+    });
   }
-
-  if (room.timeoutColor) {
-    const winnerName = room.timeoutColor === 'w' ? room.black?.name ?? 'Black' : room.white?.name ?? 'White';
-    return {
+  if (room.black?.socketId) {
+    io.to(room.black.socketId).emit(SOCKET_EVENTS.ROOM_JOINED, {
       roomCode: room.code,
-      fen: chess.fen(),
-      turn: chess.turn(),
-      whiteName: room.white?.name ?? 'White',
-      blackName: room.black?.name ?? null,
-      status: 'finished',
-      message: `Time expired — ${winnerName} wins.`,
-      moves: chess.history({ verbose: true }).map((move) => ({
-        from: move.from,
-        to: move.to,
-        san: move.san,
-        color: move.color,
-        captured: move.captured as GameState['moves'][number]['captured'],
-        promotion: move.promotion as GameState['moves'][number]['promotion'],
-      })),
-      timeControl,
-      whiteTimeMs,
-      blackTimeMs,
-      winner: room.timeoutColor === 'w' ? 'b' : 'w',
-      reason: 'Timeout',
-      drawOfferBy: room.drawOfferBy,
-      rematchRequests: { ...room.rematchRequests },
-      chatMessages: room.chatMessages,
-      spectatorCount: room.spectators.length,
-    };
+      playerColor: 'b',
+      sessionId: room.black.sessionId,
+      role: 'player',
+    });
   }
-
-  if (room.abandonedBy) {
-    const abandonedPlayer = room.abandonedBy === 'w' ? room.white : room.black;
-    return {
-      roomCode: room.code,
-      fen: chess.fen(),
-      turn: chess.turn(),
-      whiteName: room.white?.name ?? 'White',
-      blackName: room.black?.name ?? null,
-      status: chess.isGameOver() ? 'finished' : 'waiting',
-      message: `${abandonedPlayer?.name ?? 'A player'} abandoned the game. Waiting for reconnection...`,
-      moves: chess.history({ verbose: true }).map((move) => ({
-        from: move.from,
-        to: move.to,
-        san: move.san,
-        color: move.color,
-        captured: move.captured as GameState['moves'][number]['captured'],
-        promotion: move.promotion as GameState['moves'][number]['promotion'],
-      })),
-      timeControl,
-      whiteTimeMs,
-      blackTimeMs,
-      winner: null,
-      reason: null,
-      drawOfferBy: room.drawOfferBy,
-      rematchRequests: { ...room.rematchRequests },
-      chatMessages: room.chatMessages,
-      spectatorCount: room.spectators.length,
-    };
-  }
-
-  const disconnectedPlayer = room.white?.disconnected ? room.white : room.black?.disconnected ? room.black : null;
-  let message = room.black ? `${chess.turn() === 'w' ? room.white?.name : room.black?.name} to move.` : 'Waiting for opponent...';
-
-  if (room.drawOfferBy) {
-    const offeredBy = room.drawOfferBy === 'w' ? room.white?.name ?? 'White' : room.black?.name ?? 'Black';
-    message = `Draw offered by ${offeredBy}.`;
-  } else if (disconnectedPlayer) {
-    message = 'Opponent disconnected. Waiting for reconnection...';
-  }
-  if (chess.isCheckmate()) message = `Checkmate — ${chess.turn() === 'w' ? 'Black' : 'White'} wins.`;
-  else if (chess.isStalemate()) message = 'Stalemate — the game is drawn.';
-  else if (chess.isThreefoldRepetition()) message = 'Draw by threefold repetition.';
-  else if (chess.isInsufficientMaterial()) message = 'Draw by insufficient material.';
-  else if (chess.isDrawByFiftyMoves()) message = 'Draw by the fifty-move rule.';
-  else if (chess.isCheck()) message = `${chess.turn() === 'w' ? 'White' : 'Black'} is in check.`;
-
-  const hasDisconnectedPlayer = Boolean(room.white?.disconnected || room.black?.disconnected);
-
-  return {
-    roomCode: room.code,
-    fen: chess.fen(),
-    turn: chess.turn(),
-    whiteName: room.white?.name ?? 'White',
-    blackName: room.black?.name ?? null,
-    status: chess.isGameOver() ? 'finished' : room.black && !hasDisconnectedPlayer ? 'active' : 'waiting',
-    message,
-    moves: chess.history({ verbose: true }).map((move) => ({
-      from: move.from,
-      to: move.to,
-      san: move.san,
-      color: move.color,
-      captured: move.captured as GameState['moves'][number]['captured'],
-      promotion: move.promotion as GameState['moves'][number]['promotion'],
-    })),
-    timeControl,
-    whiteTimeMs,
-    blackTimeMs,
-    winner: null,
-    reason: null,
-    drawOfferBy: room.drawOfferBy,
-    rematchRequests: { ...room.rematchRequests },
-    chatMessages: room.chatMessages,
-    spectatorCount: room.spectators.length,
-  };
-}
-
-function broadcast(room: Room) {
-  io.to(room.code).emit('game-state', stateFor(room));
-}
-
-function clearRoomCleanup(roomCode: string) {
-  const timer = cleanupTimers.get(roomCode);
-  if (timer) {
-    clearTimeout(timer);
-    cleanupTimers.delete(roomCode);
-  }
-}
-
-function scheduleRoomCleanup(room: Room, disconnectedColor: PlayerColor) {
-  clearRoomCleanup(room.code);
-  const timer = setTimeout(() => {
-    const currentRoom = rooms.get(room.code);
-    if (!currentRoom) return;
-
-    const disconnectedPlayer = disconnectedColor === 'w' ? currentRoom.white : currentRoom.black;
-    if (!disconnectedPlayer || !disconnectedPlayer.disconnected) return;
-
-    currentRoom.abandonedBy = disconnectedColor;
-    if (currentRoom.white?.disconnected && currentRoom.black?.disconnected) {
-      const playerIds = [currentRoom.white.sessionId, currentRoom.black.sessionId];
-      for (const sessionId of playerIds) {
-        sessionToRoom.delete(sessionId);
-      }
-      rooms.delete(currentRoom.code);
-      clearRoomCleanup(currentRoom.code);
-      return;
-    }
-
-    broadcast(currentRoom);
-  }, RECONNECT_GRACE_PERIOD_MS);
-
-  cleanupTimers.set(room.code, timer);
-}
-
-function attachSession(socket: { id: string; join: (room: string) => void; leave: (room: string) => void; data: { sessionId?: string; roomCode?: string } }, room: Room, player: PlayerRecord) {
-  if (player.socketId && player.socketId !== socket.id) {
-    const previousSocket = io.sockets.sockets.get(player.socketId);
-    if (previousSocket && previousSocket.id !== socket.id) {
-      previousSocket.leave(room.code);
-      previousSocket.data.sessionId = undefined;
-      previousSocket.data.roomCode = undefined;
+  for (const spec of room.spectators) {
+    if (spec.socketId) {
+      io.to(spec.socketId).emit(SOCKET_EVENTS.ROOM_JOINED, {
+        roomCode: room.code,
+        playerColor: null,
+        sessionId: spec.sessionId,
+        role: 'spectator',
+      });
     }
   }
-
-  socket.data.sessionId = player.sessionId;
-  socket.data.roomCode = room.code;
-  player.socketId = socket.id;
-  player.disconnected = false;
-  room.abandonedBy = null;
-  room.lastUpdated = Date.now();
-  socket.join(room.code);
-  sessionToRoom.set(player.sessionId, { roomCode: room.code, color: player.color, role: 'player' });
-}
-
-function attachSpectatorSession(socket: { id: string; join: (room: string) => void; leave: (room: string) => void; data: { sessionId?: string; roomCode?: string } }, room: Room, spectator: SpectatorRecord) {
-  if (spectator.socketId && spectator.socketId !== socket.id) {
-    const previousSocket = io.sockets.sockets.get(spectator.socketId);
-    if (previousSocket && previousSocket.id !== socket.id) {
-      previousSocket.leave(room.code);
-      previousSocket.data.sessionId = undefined;
-      previousSocket.data.roomCode = undefined;
-    }
-  }
-
-  socket.data.sessionId = spectator.sessionId;
-  socket.data.roomCode = room.code;
-  spectator.socketId = socket.id;
-  spectator.disconnected = false;
-  room.lastUpdated = Date.now();
-  socket.join(room.code);
-  sessionToRoom.set(spectator.sessionId, { roomCode: room.code, role: 'spectator' });
-}
-
-function emitPlayerAssignments(room: Room) {
-  if (room.white) {
-    const whiteSocket = room.white.socketId ? io.sockets.sockets.get(room.white.socketId) : null;
-    if (whiteSocket) {
-      whiteSocket.emit('room-created', { roomCode: room.code, playerColor: 'w', sessionId: room.white.sessionId, hostUrl: hostUrl() });
-      whiteSocket.data.sessionId = room.white.sessionId;
-      whiteSocket.data.roomCode = room.code;
-    }
-  }
-  if (room.black) {
-    const blackSocket = room.black.socketId ? io.sockets.sockets.get(room.black.socketId) : null;
-    if (blackSocket) {
-      blackSocket.emit('room-joined', { roomCode: room.code, playerColor: 'b', sessionId: room.black.sessionId, role: 'player' });
-      blackSocket.data.sessionId = room.black.sessionId;
-      blackSocket.data.roomCode = room.code;
-    }
-  }
-}
-
-function emitConnectionStatus(socket: { emit: (event: 'connection-status', payload: { status: 'connected' | 'reconnecting' | 'disconnected'; message?: string }) => void }, status: 'connected' | 'reconnecting' | 'disconnected', message?: string) {
-  socket.emit('connection-status', { status, message });
-}
-
-function runClockTicker() {
-  setInterval(() => {
-    for (const room of rooms.values()) {
-      if (!room.black || room.timeoutColor || room.abandonedBy || room.timeControl === 'unlimited') continue;
-      const activeColor = room.chess.turn();
-      const remaining = getRemainingTime(room, activeColor);
-      if (remaining === null) continue;
-      if (remaining <= 0) {
-        if (activeColor === 'w') room.whiteTimeMs = 0; else room.blackTimeMs = 0;
-        room.timeoutColor = activeColor;
-        broadcast(room);
-      } else if (room.white && room.black && !room.white.disconnected && !room.black.disconnected) {
-        broadcast(room);
-      }
-    }
-  }, 1000);
 }
 
 io.on('connection', (socket) => {
-  emitConnectionStatus(socket, 'connected');
+  socket.emit(SOCKET_EVENTS.CONNECTION_STATUS, { status: 'connected' });
 
-  socket.on('identify-session', ({ sessionId }) => {
-    const resolvedSessionId = validateSessionId(sessionId) ?? createSessionId();
-
-    const existingSession = sessionToRoom.get(resolvedSessionId);
-    if (!existingSession) {
-      socket.data.sessionId = resolvedSessionId;
-      return;
+  // Flood guard: drop events from a socket that exceeds a generous per-second
+  // budget so a malicious client cannot flood room broadcasts.
+  let floodWindowStart = Date.now();
+  let floodEventCount = 0;
+  const FLOOD_LIMIT = 80;
+  socket.use((_event, next) => {
+    const now = Date.now();
+    if (now - floodWindowStart >= 1000) {
+      floodWindowStart = now;
+      floodEventCount = 0;
     }
+    floodEventCount += 1;
+    if (floodEventCount > FLOOD_LIMIT) return;
+    next();
+  });
 
-    const room = rooms.get(existingSession.roomCode);
+  socket.on(SOCKET_EVENTS.IDENTIFY_SESSION, ({ sessionId }) => {
+    if (!sessionId) return;
+    // A socket identifying with a new session must not leave its previous
+    // seat marked as connected with a dead socketId (ghost player).
+    const previousSessionId = socket.data.sessionId;
+    if (previousSessionId && previousSessionId !== sessionId) {
+      roomManager.leaveCurrentSession(previousSessionId);
+    }
+    const session = roomManager.getSession(sessionId);
+    if (!session) return;
+
+    const room = roomManager.getRoom(session.roomCode);
     if (!room) {
-      sessionToRoom.delete(resolvedSessionId);
-      socket.data.sessionId = resolvedSessionId;
+      roomManager.sessionToRoom.delete(sessionId);
       return;
     }
 
-    const player = getRoomPlayer(room, resolvedSessionId);
-    if (player) {
-      attachSession(socket, room, player);
-      if (player.color === 'w') {
-        socket.emit('room-created', { roomCode: room.code, playerColor: 'w', sessionId: player.sessionId, hostUrl: hostUrl() });
-      } else {
-        socket.emit('room-joined', { roomCode: room.code, playerColor: 'b', sessionId: player.sessionId, role: 'player' });
-      }
-      broadcast(room);
-      return;
-    }
+    socket.data.sessionId = sessionId;
+    socket.data.roomCode = room.code;
+    socket.join(room.code);
 
-    const spectator = getRoomSpectator(room, resolvedSessionId);
-    if (!spectator) {
-      sessionToRoom.delete(resolvedSessionId);
-      socket.data.sessionId = resolvedSessionId;
-      return;
-    }
-
-    attachSpectatorSession(socket, room, spectator);
-    socket.emit('room-joined', { roomCode: room.code, playerColor: null, sessionId: spectator.sessionId, role: 'spectator' });
-    broadcast(room);
-  });
-
-  socket.on('create-game', ({ playerName, sessionId, timeControl }) => {
-    const safeSessionId = validateSessionId(sessionId) ?? createSessionId();
-    const selectedTimeControl = normalizeTimeControl(timeControl);
-    const sanitizedName = sanitizePlayerName(playerName);
-    const existingSession = sessionToRoom.get(safeSessionId);
-
-    if (existingSession) {
-      const existingRoom = rooms.get(existingSession.roomCode);
-      if (existingRoom) {
-        const existingPlayer = getRoomPlayer(existingRoom, safeSessionId);
-        if (existingPlayer) {
-          attachSession(socket, existingRoom, existingPlayer);
-          socket.emit('room-created', { roomCode: existingRoom.code, playerColor: existingPlayer.color, sessionId: safeSessionId, hostUrl: hostUrl() });
-          broadcast(existingRoom);
-          return;
-        }
-      }
-      sessionToRoom.delete(safeSessionId);
-    }
-
-    const code = roomCode();
-    const room: Room = {
-      code,
-      chess: new Chess(),
-      white: { sessionId: safeSessionId, name: sanitizedName, socketId: socket.id, color: 'w', disconnected: false, joinedAt: Date.now() },
-      black: null,
-      spectators: [],
-      abandonedBy: null,
-      lastUpdated: Date.now(),
-      timeControl: selectedTimeControl,
-      whiteTimeMs: timeControlToMs(selectedTimeControl),
-      blackTimeMs: timeControlToMs(selectedTimeControl),
-      turnStartedAt: Date.now(),
-      timeoutColor: null,
-      winner: null,
-      resultReason: null,
-      drawOfferBy: null,
-      rematchRequests: { w: false, b: false },
-      chatMessages: [],
-    };
-    rooms.set(code, room);
-    sessionToRoom.set(safeSessionId, { roomCode: code, color: 'w', role: 'player' });
-    const createdPlayer = room.white;
-    if (!createdPlayer) {
-      throw new Error('Failed to initialize room host player.');
-    }
-    attachSession(socket, room, createdPlayer);
-    socket.emit('room-created', { roomCode: code, playerColor: 'w', sessionId: safeSessionId, hostUrl: hostUrl() });
-    broadcast(room);
-  });
-
-  socket.on('join-game', ({ roomCode: submittedCode, playerName, sessionId }) => {
-    const code = normalizeRoomCode(submittedCode);
-    if (!code) {
-      socket.emit('game-error', { message: 'Enter a valid room code.' });
-      return;
-    }
-    const safeSessionId = validateSessionId(sessionId) ?? createSessionId();
-    const sanitizedName = sanitizePlayerName(playerName);
-    const existingSession = sessionToRoom.get(safeSessionId);
-
-    if (existingSession) {
-      const existingRoom = rooms.get(existingSession.roomCode);
-      if (existingRoom) {
-        const existingPlayer = getRoomPlayer(existingRoom, safeSessionId);
-        if (existingPlayer) {
-          attachSession(socket, existingRoom, existingPlayer);
-          socket.emit('room-joined', { roomCode: existingRoom.code, playerColor: existingPlayer.color, sessionId: safeSessionId, role: 'player' });
-          broadcast(existingRoom);
-          return;
-        }
-      }
-      sessionToRoom.delete(safeSessionId);
-    }
-
-    const room = rooms.get(code);
-    if (!room) {
-      socket.emit('game-error', { message: 'Room not found. Check the room code and try again.' });
-      return;
-    }
-    if (room.black) {
-      socket.emit('game-error', { message: 'This room already has two players.' });
-      return;
-    }
-    if (room.white?.sessionId === safeSessionId) {
-      socket.emit('game-error', { message: 'You already created this room.' });
-      return;
-    }
-
-    room.black = { sessionId: safeSessionId, name: sanitizedName, socketId: socket.id, color: 'b', disconnected: false, joinedAt: Date.now() };
-    room.abandonedBy = null;
-    room.lastUpdated = Date.now();
-    room.drawOfferBy = null;
-    room.rematchRequests = { w: false, b: false };
-    room.chatMessages = [];
-    sessionToRoom.set(safeSessionId, { roomCode: code, color: 'b', role: 'player' });
-    attachSession(socket, room, room.black);
-    socket.emit('room-joined', { roomCode: code, playerColor: 'b', sessionId: safeSessionId, role: 'player' });
-    broadcast(room);
-  });
-
-  socket.on('join-spectator', ({ roomCode: submittedCode, playerName, sessionId }) => {
-    const code = normalizeRoomCode(submittedCode);
-    if (!code) {
-      socket.emit('game-error', { message: 'Enter a valid room code.' });
-      return;
-    }
-    const safeSessionId = validateSessionId(sessionId) ?? createSessionId();
-    const sanitizedName = sanitizePlayerName(playerName ?? 'Spectator');
-    const existingSession = sessionToRoom.get(safeSessionId);
-
-    if (existingSession) {
-      const existingRoom = rooms.get(existingSession.roomCode);
-      if (existingRoom) {
-        if (existingSession.role === 'spectator') {
-          const existingSpectator = getRoomSpectator(existingRoom, safeSessionId);
-          if (existingSpectator) {
-            attachSpectatorSession(socket, existingRoom, existingSpectator);
-            socket.emit('room-joined', { roomCode: existingRoom.code, playerColor: null, sessionId: safeSessionId, role: 'spectator' });
-            broadcast(existingRoom);
-            return;
+    if (session.role === 'player') {
+      const player = roomManager.getRoomPlayer(room, sessionId);
+      if (player) {
+        // Evict any previous socket still holding this seat so a stale socket's
+        // later disconnect cannot mark the live player as disconnected.
+        if (player.socketId && player.socketId !== socket.id) {
+          const oldSocket = io.sockets.sockets.get(player.socketId);
+          if (oldSocket) {
+            oldSocket.leave(room.code);
+            oldSocket.data.sessionId = undefined;
+            oldSocket.data.roomCode = undefined;
           }
         }
-
-        const existingPlayer = getRoomPlayer(existingRoom, safeSessionId);
-        if (existingPlayer) {
-          attachSession(socket, existingRoom, existingPlayer);
-          socket.emit('room-joined', { roomCode: existingRoom.code, playerColor: existingPlayer.color, sessionId: safeSessionId, role: 'player' });
-          broadcast(existingRoom);
-          return;
+        player.socketId = socket.id;
+        roomManager.rejoinPlayer(room, player, (abandonedRoom) => broadcastRoomState(abandonedRoom));
+        socket.emit(SOCKET_EVENTS.ROOM_JOINED, {
+          roomCode: room.code,
+          playerColor: player.color,
+          sessionId: player.sessionId,
+          role: 'player',
+        });
+      }
+    } else {
+      const spec = roomManager.getRoomSpectator(room, sessionId);
+      if (spec) {
+        if (spec.socketId && spec.socketId !== socket.id) {
+          const oldSocket = io.sockets.sockets.get(spec.socketId);
+          if (oldSocket) {
+            oldSocket.leave(room.code);
+            oldSocket.data.sessionId = undefined;
+            oldSocket.data.roomCode = undefined;
+          }
         }
+        spec.socketId = socket.id;
+        spec.disconnected = false;
+        socket.emit(SOCKET_EVENTS.ROOM_JOINED, {
+          roomCode: room.code,
+          playerColor: null,
+          sessionId: spec.sessionId,
+          role: 'spectator',
+        });
       }
-      sessionToRoom.delete(safeSessionId);
     }
 
-    const room = rooms.get(code);
+    broadcastRoomState(room);
+  });
+
+  socket.on(SOCKET_EVENTS.CREATE_GAME, ({ playerName, sessionId, timeControl, allowTakebacks }) => {
+    const result = roomManager.createGame(playerName, sessionId, timeControl, socket.id, allowTakebacks ?? true);
+    if ('error' in result) {
+      socket.emit(SOCKET_EVENTS.GAME_ERROR, { message: result.error });
+      return;
+    }
+
+    const { room, player } = result;
+    socket.data.sessionId = player.sessionId;
+    socket.data.roomCode = room.code;
+    socket.join(room.code);
+
+    socket.emit(SOCKET_EVENTS.ROOM_CREATED, {
+      roomCode: room.code,
+      playerColor: 'w',
+      sessionId: player.sessionId,
+      hostUrl: getHostUrl(),
+    });
+
+    broadcastRoomState(room);
+  });
+
+  socket.on(SOCKET_EVENTS.JOIN_GAME, ({ roomCode, playerName, sessionId }) => {
+    const result = roomManager.joinGame(roomCode, playerName, sessionId, socket.id);
+    if ('error' in result) {
+      socket.emit(SOCKET_EVENTS.GAME_ERROR, { message: result.error });
+      return;
+    }
+
+    const { room, player } = result;
+    socket.data.sessionId = player.sessionId;
+    socket.data.roomCode = room.code;
+    socket.join(room.code);
+
+    socket.emit(SOCKET_EVENTS.ROOM_JOINED, {
+      roomCode: room.code,
+      playerColor: player.color,
+      sessionId: player.sessionId,
+      role: 'player',
+    });
+
+    broadcastRoomState(room);
+  });
+
+  socket.on(SOCKET_EVENTS.JOIN_SPECTATOR, ({ roomCode, playerName, sessionId }) => {
+    const result = roomManager.joinSpectator(roomCode, playerName, sessionId, socket.id);
+    if ('error' in result) {
+      socket.emit(SOCKET_EVENTS.GAME_ERROR, { message: result.error });
+      return;
+    }
+
+    const { room, spectator } = result;
+    socket.data.sessionId = spectator.sessionId;
+    socket.data.roomCode = room.code;
+    socket.join(room.code);
+
+    socket.emit(SOCKET_EVENTS.ROOM_JOINED, {
+      roomCode: room.code,
+      playerColor: null,
+      sessionId: spectator.sessionId,
+      role: 'spectator',
+    });
+
+    broadcastRoomState(room);
+  });
+
+  socket.on(SOCKET_EVENTS.MAKE_MOVE, ({ from, to, promotion }) => {
+    const sessionId = socket.data.sessionId;
+    if (!sessionId) {
+      socket.emit(SOCKET_EVENTS.GAME_ERROR, { message: 'Session not identified.' });
+      return;
+    }
+
+    const session = roomManager.getSession(sessionId);
+    if (!session || session.role !== 'player') {
+      socket.emit(SOCKET_EVENTS.GAME_ERROR, { message: 'Only active players can make moves.' });
+      return;
+    }
+
+    const room = roomManager.getRoom(session.roomCode);
     if (!room) {
-      socket.emit('game-error', { message: 'Room not found. Check the room code and try again.' });
-      return;
-    }
-    if (room.spectators.length >= MAX_SPECTATORS) {
-      socket.emit('game-error', { message: `This room already has the maximum spectator count (${MAX_SPECTATORS}).` });
+      socket.emit(SOCKET_EVENTS.GAME_ERROR, { message: 'Room not found.' });
       return;
     }
 
-    const spectator: SpectatorRecord = {
-      sessionId: safeSessionId,
-      name: sanitizedName,
-      socketId: socket.id,
-      joinedAt: Date.now(),
-      disconnected: false,
-    };
-    room.spectators = [...room.spectators.filter((entry) => entry.sessionId !== safeSessionId), spectator];
-    room.lastUpdated = Date.now();
-    attachSpectatorSession(socket, room, spectator);
-    socket.emit('room-joined', { roomCode: code, playerColor: null, sessionId: safeSessionId, role: 'spectator' });
-    broadcast(room);
+    const moveResult = roomManager.makeMove(room, sessionId, from, to, promotion);
+    if ('error' in moveResult) {
+      // A move attempt that flagged the mover on time finishes the room; the
+      // players must receive the finished state even though the move errored.
+      if (moveResult.finished) {
+        broadcastRoomState(room);
+      }
+      socket.emit(SOCKET_EVENTS.GAME_ERROR, { message: moveResult.error });
+      return;
+    }
+
+    broadcastRoomState(room);
   });
 
-  socket.on('make-move', ({ from, to, promotion }) => {
+  socket.on(SOCKET_EVENTS.RESIGN_GAME, () => {
     const sessionId = socket.data.sessionId;
-    if (!sessionId) {
-      socket.emit('game-error', { message: 'Session not identified. Refresh and try again.' });
-      return;
-    }
-    if (!isChessSquare(from) || !isChessSquare(to)) {
-      socket.emit('game-error', { message: 'Invalid move coordinates.' });
-      return;
-    }
-    const normalizedPromotion = normalizePromotion(promotion);
+    if (!sessionId) return;
 
-    const session = sessionToRoom.get(sessionId);
-    if (!session) {
-      socket.emit('game-error', { message: 'You are not in an active room.' });
-      return;
-    }
+    const session = roomManager.getSession(sessionId);
+    if (!session || session.role !== 'player') return;
 
-    const room = rooms.get(session.roomCode);
-    if (!room || !room.black) {
-      socket.emit('game-error', { message: 'Join a two-player room before moving.' });
-      return;
-    }
-    if (session.role !== 'player') {
-      socket.emit('game-error', { message: 'Spectators cannot make moves.' });
-      return;
-    }
+    const room = roomManager.getRoom(session.roomCode);
+    if (!room || room.resultReason || !room.black) return;
 
-    const player = getRoomPlayer(room, sessionId);
-    if (!player || player.disconnected) {
-      socket.emit('game-error', { message: 'Your connection is disconnected. Wait for reconnection.' });
-      return;
-    }
+    const player = roomManager.getRoomPlayer(room, sessionId);
+    if (!player) return;
 
-    const color: PlayerColor = player.color;
-    if (room.resultReason || room.timeoutColor || room.chess.isGameOver()) {
-      socket.emit('game-error', { message: 'This game has already finished.' });
-      return;
-    }
-    if (room.white?.disconnected || room.black?.disconnected) {
-      socket.emit('game-error', { message: 'The opponent is disconnected. Waiting for reconnection.' });
-      return;
-    }
-    if (room.chess.turn() !== color) {
-      socket.emit('game-error', { message: 'It is not your turn.' });
-      return;
-    }
-
-    const remaining = getRemainingTime(room, color);
-    if (remaining !== null && remaining <= 0) {
-      if (color === 'w') room.whiteTimeMs = 0; else room.blackTimeMs = 0;
-      room.timeoutColor = color;
-      finishRoom(room, color === 'w' ? 'b' : 'w', 'Timeout');
-      return;
-    }
-
-    try {
-      const previousTime = color === 'w' ? room.whiteTimeMs : room.blackTimeMs;
-      const elapsed = Date.now() - room.turnStartedAt;
-      if (previousTime !== null) {
-        if (color === 'w') room.whiteTimeMs = Math.max(0, previousTime - elapsed);
-        else room.blackTimeMs = Math.max(0, previousTime - elapsed);
-      }
-      room.chess.move({ from, to, promotion: normalizedPromotion });
-      room.turnStartedAt = Date.now();
-      room.lastUpdated = Date.now();
-      room.drawOfferBy = null;
-
-      if (room.chess.isCheckmate()) {
-        const winner = room.chess.turn() === 'w' ? 'b' : 'w';
-        finishRoom(room, winner, 'Checkmate');
-        return;
-      }
-      if (room.chess.isStalemate()) {
-        finishRoom(room, 'draw', 'Draw by stalemate');
-        return;
-      }
-      if (room.chess.isThreefoldRepetition()) {
-        finishRoom(room, 'draw', 'Draw by repetition');
-        return;
-      }
-      if (room.chess.isInsufficientMaterial()) {
-        finishRoom(room, 'draw', 'Draw by insufficient material');
-        return;
-      }
-      if (room.chess.isDrawByFiftyMoves()) {
-        finishRoom(room, 'draw', 'Draw by fifty-move rule');
-        return;
-      }
-      if (room.chess.isGameOver()) {
-        finishRoom(room, 'draw', 'Draw');
-        return;
-      }
-
-      broadcast(room);
-    } catch {
-      socket.emit('game-error', { message: 'That move is not legal.' });
-    }
+    const winner: PlayerColor = player.color === 'w' ? 'b' : 'w';
+    const winnerName = player.color === 'w' ? (room.black?.name ?? 'Black') : (room.white?.name ?? 'White');
+    roomManager.finishRoom(room, winner, `${player.name} resigned. ${winnerName} wins.`);
+    broadcastRoomState(room);
   });
 
-  socket.on('resign-game', () => {
+  socket.on(SOCKET_EVENTS.OFFER_DRAW, () => {
     const sessionId = socket.data.sessionId;
-    if (!sessionId) {
-      socket.emit('game-error', { message: 'Session not identified. Refresh and try again.' });
-      return;
-    }
-    const session = sessionToRoom.get(sessionId);
-    if (!session) {
-      socket.emit('game-error', { message: 'You are not in an active room.' });
-      return;
-    }
-    const room = rooms.get(session.roomCode);
-    if (!room || !room.black) {
-      socket.emit('game-error', { message: 'Join a two-player room before resigning.' });
-      return;
-    }
-    if (room.resultReason) {
-      socket.emit('game-error', { message: 'This game has already finished.' });
-      return;
-    }
-    const player = getRoomPlayer(room, sessionId);
-    if (!player) {
-      socket.emit('game-error', { message: 'You are not in this room.' });
-      return;
-    }
-    finishRoom(room, player.color === 'w' ? 'b' : 'w', 'Resignation');
-  });
+    if (!sessionId) return;
 
-  socket.on('offer-draw', () => {
-    const sessionId = socket.data.sessionId;
-    if (!sessionId) {
-      socket.emit('game-error', { message: 'Session not identified. Refresh and try again.' });
-      return;
-    }
-    const session = sessionToRoom.get(sessionId);
-    if (!session) {
-      socket.emit('game-error', { message: 'You are not in an active room.' });
-      return;
-    }
-    const room = rooms.get(session.roomCode);
-    if (!room || !room.black) {
-      socket.emit('game-error', { message: 'Join a two-player room before offering a draw.' });
-      return;
-    }
-    if (room.resultReason) {
-      socket.emit('game-error', { message: 'This game has already finished.' });
-      return;
-    }
-    const player = getRoomPlayer(room, sessionId);
-    if (!player || player.disconnected) {
-      socket.emit('game-error', { message: 'Your connection is disconnected. Wait for reconnection.' });
-      return;
-    }
-    if (room.drawOfferBy) {
-      socket.emit('game-error', { message: 'A draw is already pending.' });
-      return;
-    }
+    const session = roomManager.getSession(sessionId);
+    if (!session || session.role !== 'player') return;
+
+    const room = roomManager.getRoom(session.roomCode);
+    if (!room || room.resultReason || !room.black) return;
+
+    const player = roomManager.getRoomPlayer(room, sessionId);
+    if (!player) return;
+
+    if (room.drawOfferBy === player.color) return;
+
     room.drawOfferBy = player.color;
-    broadcast(room);
+    room.lastUpdated = Date.now();
+    broadcastRoomState(room);
   });
 
-  socket.on('respond-draw', ({ accept }) => {
+  socket.on(SOCKET_EVENTS.RESPOND_DRAW, ({ accept }) => {
     const sessionId = socket.data.sessionId;
-    if (!sessionId) {
-      socket.emit('game-error', { message: 'Session not identified. Refresh and try again.' });
-      return;
-    }
-    if (typeof accept !== 'boolean') {
-      socket.emit('game-error', { message: 'Invalid draw response.' });
-      return;
-    }
-    const session = sessionToRoom.get(sessionId);
-    if (!session) {
-      socket.emit('game-error', { message: 'You are not in an active room.' });
-      return;
-    }
-    const room = rooms.get(session.roomCode);
-    if (!room || !room.black) {
-      socket.emit('game-error', { message: 'Join a two-player room before responding to a draw.' });
-      return;
-    }
-    if (room.resultReason) {
-      socket.emit('game-error', { message: 'This game has already finished.' });
-      return;
-    }
-    const player = getRoomPlayer(room, sessionId);
-    if (!player || player.disconnected) {
-      socket.emit('game-error', { message: 'Your connection is disconnected. Wait for reconnection.' });
-      return;
-    }
-    if (!room.drawOfferBy || room.drawOfferBy === player.color) {
-      socket.emit('game-error', { message: 'There is no pending draw offer for you.' });
-      return;
-    }
+    if (!sessionId) return;
+
+    const session = roomManager.getSession(sessionId);
+    if (!session || session.role !== 'player') return;
+
+    const room = roomManager.getRoom(session.roomCode);
+    if (!room || room.resultReason || !room.drawOfferBy) return;
+
+    const player = roomManager.getRoomPlayer(room, sessionId);
+    if (!player || player.color === room.drawOfferBy) return;
+
     if (accept) {
-      finishRoom(room, 'draw', 'Draw by agreement');
-      return;
+      roomManager.finishRoom(room, 'draw', 'Draw agreed by both players.');
+    } else {
+      room.drawOfferBy = null;
+      room.lastUpdated = Date.now();
     }
-    room.drawOfferBy = null;
-    broadcast(room);
+    broadcastRoomState(room);
   });
 
-  socket.on('request-rematch', () => {
+  socket.on(SOCKET_EVENTS.REQUEST_TAKEBACK, () => {
     const sessionId = socket.data.sessionId;
-    if (!sessionId) {
-      socket.emit('game-error', { message: 'Session not identified. Refresh and try again.' });
+    if (!sessionId) return;
+
+    const session = roomManager.getSession(sessionId);
+    if (!session || session.role !== 'player') return;
+
+    const room = roomManager.getRoom(session.roomCode);
+    if (!room) return;
+
+    const result = roomManager.requestTakeback(room, sessionId);
+    if (result.error) {
+      socket.emit(SOCKET_EVENTS.GAME_ERROR, { message: result.error });
       return;
     }
-    const session = sessionToRoom.get(sessionId);
-    if (!session) {
-      socket.emit('game-error', { message: 'You are not in an active room.' });
+
+    broadcastRoomState(room);
+  });
+
+  socket.on(SOCKET_EVENTS.RESPOND_TAKEBACK, ({ accept }) => {
+    const sessionId = socket.data.sessionId;
+    if (!sessionId) return;
+
+    const session = roomManager.getSession(sessionId);
+    if (!session || session.role !== 'player') return;
+
+    const room = roomManager.getRoom(session.roomCode);
+    if (!room) return;
+
+    const result = roomManager.respondTakeback(room, sessionId, accept);
+    if (result.error) {
+      socket.emit(SOCKET_EVENTS.GAME_ERROR, { message: result.error });
       return;
     }
-    const room = rooms.get(session.roomCode);
-    if (!room || !room.black) {
-      socket.emit('game-error', { message: 'This room is not valid for a rematch.' });
+
+    broadcastRoomState(room);
+  });
+
+  socket.on(SOCKET_EVENTS.REQUEST_REMATCH, () => {
+    const sessionId = socket.data.sessionId;
+    if (!sessionId) return;
+
+    const session = roomManager.getSession(sessionId);
+    if (!session || session.role !== 'player') return;
+
+    const room = roomManager.getRoom(session.roomCode);
+    if (!room || !room.resultReason || !room.black) {
+      socket.emit(SOCKET_EVENTS.GAME_ERROR, { message: 'A rematch can only be requested after game completion.' });
       return;
     }
-    const player = getRoomPlayer(room, sessionId);
-    if (!player) {
-      socket.emit('game-error', { message: 'You are not in this room.' });
-      return;
-    }
-    if (!room.resultReason) {
-      socket.emit('game-error', { message: 'The game is still in progress.' });
-      return;
-    }
+
+    const player = roomManager.getRoomPlayer(room, sessionId);
+    if (!player) return;
+
+    // Nothing changed if this player already requested the rematch.
+    if (room.rematchRequests[player.color]) return;
 
     room.rematchRequests[player.color] = true;
+    room.lastUpdated = Date.now();
+
     if (room.rematchRequests.w && room.rematchRequests.b) {
-      const previousWhite = room.white;
-      const previousBlack = room.black;
-
-      if (previousWhite && previousBlack) {
-        const nextWhitePlayer = { ...previousBlack, color: 'w' as const, disconnected: false, socketId: previousBlack.socketId };
-        const nextBlackPlayer = { ...previousWhite, color: 'b' as const, disconnected: false, socketId: previousWhite.socketId };
-
-        room.white = nextWhitePlayer;
-        room.black = nextBlackPlayer;
-
-        const nextWhiteSocket = nextWhitePlayer.socketId ? io.sockets.sockets.get(nextWhitePlayer.socketId) : null;
-        const nextBlackSocket = nextBlackPlayer.socketId ? io.sockets.sockets.get(nextBlackPlayer.socketId) : null;
-
-        if (nextWhiteSocket) {
-          nextWhiteSocket.data.sessionId = nextWhitePlayer.sessionId;
-          nextWhiteSocket.data.roomCode = room.code;
-          nextWhiteSocket.join(room.code);
-        }
-        if (nextBlackSocket) {
-          nextBlackSocket.data.sessionId = nextBlackPlayer.sessionId;
-          nextBlackSocket.data.roomCode = room.code;
-          nextBlackSocket.join(room.code);
-        }
-
-        sessionToRoom.set(nextWhitePlayer.sessionId, { roomCode: room.code, color: 'w', role: 'player' });
-        sessionToRoom.set(nextBlackPlayer.sessionId, { roomCode: room.code, color: 'b', role: 'player' });
-      }
-
-      room.chess = new Chess();
-      room.whiteTimeMs = timeControlToMs(room.timeControl);
-      room.blackTimeMs = timeControlToMs(room.timeControl);
-      room.turnStartedAt = Date.now();
-      room.timeoutColor = null;
-      room.resultReason = null;
-      room.winner = null;
-      room.drawOfferBy = null;
-      room.rematchRequests = { w: false, b: false };
-      room.abandonedBy = null;
-      room.chatMessages = [];
-      room.lastUpdated = Date.now();
-      emitPlayerAssignments(room);
-      broadcast(room);
-      return;
+      roomManager.handleRematchAgreement(room);
+      emitAssignments(room);
     }
 
-    broadcast(room);
+    broadcastRoomState(room);
   });
 
-  socket.on('respond-rematch', ({ accept }) => {
+  socket.on(SOCKET_EVENTS.RESPOND_REMATCH, ({ accept }) => {
     const sessionId = socket.data.sessionId;
-    if (!sessionId) {
-      socket.emit('game-error', { message: 'Session not identified. Refresh and try again.' });
-      return;
-    }
-    if (typeof accept !== 'boolean') {
-      socket.emit('game-error', { message: 'Invalid rematch response.' });
-      return;
-    }
+    if (!sessionId) return;
 
-    const session = sessionToRoom.get(sessionId);
-    if (!session) {
-      socket.emit('game-error', { message: 'You are not in an active room.' });
-      return;
-    }
+    const session = roomManager.getSession(sessionId);
+    if (!session || session.role !== 'player') return;
 
-    const room = rooms.get(session.roomCode);
-    if (!room || !room.black) {
-      socket.emit('game-error', { message: 'This room is not valid for rematch approval.' });
-      return;
-    }
+    const room = roomManager.getRoom(session.roomCode);
+    if (!room || !room.resultReason || !room.black) return;
 
-    const player = getRoomPlayer(room, sessionId);
-    if (!player) {
-      socket.emit('game-error', { message: 'You are not in this room.' });
-      return;
-    }
-
-    if (!room.resultReason) {
-      socket.emit('game-error', { message: 'There is no finished game to rematch.' });
-      return;
-    }
+    const player = roomManager.getRoomPlayer(room, sessionId);
+    if (!player) return;
 
     if (accept) {
       room.rematchRequests[player.color] = true;
-    } else {
-      room.rematchRequests = { w: false, b: false };
-      room.chatMessages = [];
-      broadcast(room);
-      return;
-    }
-
-    if (room.rematchRequests.w && room.rematchRequests.b) {
-      const previousWhite = room.white;
-      const previousBlack = room.black;
-
-      if (previousWhite && previousBlack) {
-        const nextWhitePlayer = { ...previousBlack, color: 'w' as const, disconnected: false, socketId: previousBlack.socketId };
-        const nextBlackPlayer = { ...previousWhite, color: 'b' as const, disconnected: false, socketId: previousWhite.socketId };
-
-        room.white = nextWhitePlayer;
-        room.black = nextBlackPlayer;
-
-        const nextWhiteSocket = nextWhitePlayer.socketId ? io.sockets.sockets.get(nextWhitePlayer.socketId) : null;
-        const nextBlackSocket = nextBlackPlayer.socketId ? io.sockets.sockets.get(nextBlackPlayer.socketId) : null;
-
-        if (nextWhiteSocket) {
-          nextWhiteSocket.data.sessionId = nextWhitePlayer.sessionId;
-          nextWhiteSocket.data.roomCode = room.code;
-          nextWhiteSocket.join(room.code);
-        }
-        if (nextBlackSocket) {
-          nextBlackSocket.data.sessionId = nextBlackPlayer.sessionId;
-          nextBlackSocket.data.roomCode = room.code;
-          nextBlackSocket.join(room.code);
-        }
-
-        sessionToRoom.set(nextWhitePlayer.sessionId, { roomCode: room.code, color: 'w', role: 'player' });
-        sessionToRoom.set(nextBlackPlayer.sessionId, { roomCode: room.code, color: 'b', role: 'player' });
-      }
-
-      room.chess = new Chess();
-      room.whiteTimeMs = timeControlToMs(room.timeControl);
-      room.blackTimeMs = timeControlToMs(room.timeControl);
-      room.turnStartedAt = Date.now();
-      room.timeoutColor = null;
-      room.resultReason = null;
-      room.winner = null;
-      room.drawOfferBy = null;
-      room.rematchRequests = { w: false, b: false };
-      room.abandonedBy = null;
-      room.chatMessages = [];
       room.lastUpdated = Date.now();
-      emitPlayerAssignments(room);
-      broadcast(room);
-      return;
+      if (room.rematchRequests.w && room.rematchRequests.b) {
+        roomManager.handleRematchAgreement(room);
+        emitAssignments(room);
+      }
+    } else {
+      const hadRequest = room.rematchRequests.w || room.rematchRequests.b;
+      room.rematchRequests = { w: false, b: false };
+      room.lastUpdated = Date.now();
+      if (!hadRequest) return; // nothing changed; skip the broadcast
     }
 
-    broadcast(room);
+    broadcastRoomState(room);
   });
 
-  socket.on('send-chat', ({ message }) => {
+  socket.on(SOCKET_EVENTS.SEND_CHAT, ({ message }) => {
     const sessionId = socket.data.sessionId;
     if (!sessionId) {
-      socket.emit('game-error', { message: 'Session not identified. Refresh and try again.' });
+      socket.emit(SOCKET_EVENTS.GAME_ERROR, { message: 'Session not identified.' });
       return;
     }
 
-    const session = sessionToRoom.get(sessionId);
+    const session = roomManager.getSession(sessionId);
     if (!session) {
-      socket.emit('game-error', { message: 'You are not in an active room.' });
+      socket.emit(SOCKET_EVENTS.GAME_ERROR, { message: 'You are not in an active room.' });
       return;
     }
 
-    const room = rooms.get(session.roomCode);
-    if (!room || !room.black) {
-      socket.emit('game-error', { message: 'Join a room before sending a message.' });
+    const room = roomManager.getRoom(session.roomCode);
+    if (!room) {
+      socket.emit(SOCKET_EVENTS.GAME_ERROR, { message: 'Room not found.' });
       return;
     }
 
-    const player = getRoomPlayer(room, sessionId);
-    const spectator = getRoomSpectator(room, sessionId);
+    const player = roomManager.getRoomPlayer(room, sessionId);
+    const spectator = roomManager.getRoomSpectator(room, sessionId);
     if (!player && !spectator) {
-      socket.emit('game-error', { message: 'You are not in this room.' });
+      socket.emit(SOCKET_EVENTS.GAME_ERROR, { message: 'You are not a participant in this room.' });
       return;
     }
-    if (room.resultReason) {
-      socket.emit('game-error', { message: 'Chat closes once the room ends.' });
+
+    if (typeof message !== 'string' || message.length > 500) {
+      socket.emit(SOCKET_EVENTS.GAME_ERROR, { message: `Messages are limited to ${MAX_CHAT_MESSAGE_LENGTH} characters.` });
       return;
     }
 
     const sanitized = sanitizeChatMessage(message);
     if (!sanitized) {
-      socket.emit('game-error', { message: 'Message is empty or invalid.' });
-      return;
-    }
-    if (sanitized.length > MAX_CHAT_MESSAGE_LENGTH) {
-      socket.emit('game-error', { message: `Chat messages are limited to ${MAX_CHAT_MESSAGE_LENGTH} characters.` });
+      socket.emit(SOCKET_EVENTS.GAME_ERROR, { message: 'Message is empty or invalid.' });
       return;
     }
 
     const lastChatAt = Number(socket.data.lastChatAt ?? 0);
     if (Date.now() - lastChatAt < 800) {
-      socket.emit('game-error', { message: 'Please slow down. Try again in a moment.' });
+      socket.emit(SOCKET_EVENTS.GAME_ERROR, { message: 'Please slow down. Try again in a moment.' });
       return;
     }
     socket.data.lastChatAt = Date.now();
 
-    room.chatMessages = [...room.chatMessages.slice(-19), {
-      id: `chat-${randomBytes(8).toString('hex')}`,
+    const chatItem = {
+      id: `chat-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       sender: player?.name ?? spectator?.name ?? 'Spectator',
+      senderSessionId: sessionId,
       message: sanitized,
-      color: player?.color ?? 'system',
+      color: player?.color ?? ('system' as const),
       sentAt: Date.now(),
-    }];
-    broadcast(room);
+    };
+
+    room.chatMessages = [...room.chatMessages.slice(-29), chatItem];
+    room.lastUpdated = Date.now();
+    broadcastRoomState(room);
   });
 
-  socket.on('leave-room', () => {
+  socket.on(SOCKET_EVENTS.LEAVE_ROOM, () => {
     const sessionId = socket.data.sessionId;
     if (!sessionId) return;
 
-    const session = sessionToRoom.get(sessionId);
-    if (!session) {
-      socket.data.sessionId = undefined;
-      socket.data.roomCode = undefined;
-      return;
+    const session = roomManager.getSession(sessionId);
+    if (session) {
+      socket.leave(session.roomCode);
+      const room = roomManager.getRoom(session.roomCode);
+      roomManager.leaveCurrentSession(sessionId);
+      if (room) {
+        broadcastRoomState(room);
+      }
     }
 
-    const room = rooms.get(session.roomCode);
-    if (!room) {
-      sessionToRoom.delete(sessionId);
-      socket.data.sessionId = undefined;
-      socket.data.roomCode = undefined;
-      return;
-    }
-
-    const player = getRoomPlayer(room, sessionId);
-    const spectator = getRoomSpectator(room, sessionId);
-
-    socket.leave(room.code);
     socket.data.sessionId = undefined;
     socket.data.roomCode = undefined;
-    sessionToRoom.delete(sessionId);
-
-    if (player) {
-      if (room.white?.sessionId === sessionId) room.white = null;
-      if (room.black?.sessionId === sessionId) room.black = null;
-
-      clearRoomCleanup(room.code);
-
-      if (!room.white && !room.black) {
-        rooms.delete(room.code);
-        return;
-      }
-
-      const remainingPlayer = room.white ?? room.black;
-      if (remainingPlayer) {
-        remainingPlayer.socketId = null;
-        remainingPlayer.disconnected = true;
-        room.abandonedBy = remainingPlayer.color;
-        room.lastUpdated = Date.now();
-        scheduleRoomCleanup(room, remainingPlayer.color);
-      }
-      broadcast(room);
-      return;
-    }
-
-    if (spectator) {
-      room.spectators = room.spectators.filter((entry) => entry.sessionId !== sessionId);
-      room.lastUpdated = Date.now();
-      if (room.white || room.black || room.spectators.length) {
-        broadcast(room);
-      }
-    }
   });
 
   socket.on('disconnect', () => {
     const sessionId = socket.data.sessionId;
     if (!sessionId) return;
 
-    const session = sessionToRoom.get(sessionId);
+    const session = roomManager.getSession(sessionId);
     if (!session) return;
 
-    const room = rooms.get(session.roomCode);
+    const room = roomManager.getRoom(session.roomCode);
     if (!room) {
-      sessionToRoom.delete(sessionId);
+      roomManager.sessionToRoom.delete(sessionId);
       return;
     }
 
-    const player = getRoomPlayer(room, sessionId);
-    const spectator = getRoomSpectator(room, sessionId);
-    if (player) {
-      if (player.socketId !== socket.id) {
-        return;
-      }
+    if (session.role === 'player') {
+      const player = roomManager.getRoomPlayer(room, sessionId);
+      if (player) {
+        // A newer socket may already own this seat (fast reconnect while the old
+        // connection is still timing out) — only the owning socket may mark it.
+        if (player.socketId && player.socketId !== socket.id) return;
 
-      player.socketId = null;
-      player.disconnected = true;
-      room.lastUpdated = Date.now();
+        player.socketId = null;
+        player.disconnected = true;
+        room.lastUpdated = Date.now();
 
-      if (room.white?.disconnected && room.black?.disconnected) {
-        if (room.abandonedBy === null) room.abandonedBy = room.white.disconnected ? 'w' : 'b';
-        if (room.black) {
-          sessionToRoom.delete(room.black.sessionId);
+        // Mark when the clock paused so the reconnecting player is not charged
+        // for the time they were offline.
+        if (room.black && !room.resultReason && room.disconnectedAt === null) {
+          room.disconnectedAt = Date.now();
         }
-        if (room.white) {
-          sessionToRoom.delete(room.white.sessionId);
+
+        // If game is active and Black is in room, schedule reconnection grace period
+        if (room.black && !room.resultReason) {
+          roomManager.scheduleRoomCleanup(room, player.color, (abandonedRoom) => {
+            broadcastRoomState(abandonedRoom);
+          });
+        } else if (!room.black && !room.resultReason) {
+          // Nobody ever joined this waiting room: reclaim it after the grace period.
+          roomManager.scheduleWaitingRoomCleanup(room);
         }
-        rooms.delete(room.code);
-        clearRoomCleanup(room.code);
-        return;
+        broadcastRoomState(room);
       }
+    } else {
+      const spec = roomManager.getRoomSpectator(room, sessionId);
+      if (spec) {
+        if (spec.socketId && spec.socketId !== socket.id) return;
 
-      clearRoomCleanup(room.code);
-      scheduleRoomCleanup(room, player.color);
-      broadcast(room);
-      return;
-    }
-
-    if (spectator) {
-      spectator.socketId = null;
-      spectator.disconnected = true;
-      room.spectators = room.spectators.filter((entry) => entry.sessionId !== sessionId);
-      room.lastUpdated = Date.now();
-      sessionToRoom.delete(sessionId);
-      broadcast(room);
+        spec.socketId = null;
+        spec.disconnected = true;
+        room.spectators = room.spectators.filter((s) => s.sessionId !== sessionId);
+        roomManager.sessionToRoom.delete(sessionId);
+        room.lastUpdated = Date.now();
+        broadcastRoomState(room);
+      }
     }
   });
 });
 
-app.get('/api/status', (_request, response) => response.json({ online: true, lanIp: getLanIp(), port: PORT } satisfies ServerStatus));
+app.get('/api/status', (_request, response) => {
+  response.json({
+    online: true,
+    lanIp: getLanIp(),
+    port: PORT,
+  } satisfies ServerStatus);
+});
 
+// Resolve client production and dev directories
 const clientCandidates = [
   path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../client'),
-  path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../client'),
+  path.resolve(process.cwd(), 'dist/client'),
   path.resolve(process.cwd(), 'client'),
 ];
 const clientDirectory = clientCandidates.find((candidate) => existsSync(candidate));
 if (clientDirectory) {
   app.use(express.static(clientDirectory));
   app.use((request, response, next) => {
-    if (request.path.startsWith('/api')) return next();
+    if (request.path.startsWith('/api') || request.path.startsWith('/socket.io')) return next();
     response.sendFile(path.join(clientDirectory, 'index.html'));
   });
 }
 
-runClockTicker();
+// Clock ticker: enforces timeouts once per second. Ticking clocks are sent as a
+// lightweight clock-update event instead of the full game state, which would
+// re-send the entire move history and chat log every second.
+setInterval(() => {
+  const timedOutRoomCodes = roomManager.checkTimeouts();
+  for (const code of timedOutRoomCodes) {
+    const room = roomManager.getRoom(code);
+    if (room) broadcastRoomState(room);
+  }
+
+  for (const room of roomManager.rooms.values()) {
+    if (
+      room.black &&
+      !room.resultReason &&
+      !room.timeoutColor &&
+      room.timeControl !== 'unlimited' &&
+      !timedOutRoomCodes.includes(room.code)
+    ) {
+      io.to(room.code).emit(SOCKET_EVENTS.CLOCK_UPDATE, {
+        roomCode: room.code,
+        whiteTimeMs: roomManager.getRemainingTime(room, 'w'),
+        blackTimeMs: roomManager.getRemainingTime(room, 'b'),
+      });
+    }
+  }
+}, 1000);
+
+// Sweep stale rooms inactive for > 1 hour
+setInterval(() => {
+  roomManager.sweepIdleRooms();
+}, 10 * 60 * 1000);
 
 httpServer.listen(PORT, HOST, () => {
   console.info(`LAN Chess server listening on http://${HOST}:${PORT}`);
-  if (hostUrl()) console.info(`LAN access: ${hostUrl()}`);
+  const url = getHostUrl();
+  if (url) console.info(`LAN access: ${url}`);
 });

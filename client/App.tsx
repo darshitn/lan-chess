@@ -1,128 +1,359 @@
-import { useEffect, useMemo, useState, type DragEvent } from 'react';
-import { Chess, type Color, type Move, type PieceSymbol, type Square } from 'chess.js';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { Chess, type Move, type Square } from 'chess.js';
 import { io, type Socket } from 'socket.io-client';
-import type { ClientToServerEvents, ConnectionStatus, GameMove, GameState, PlayerColor, PromotionPiece, ServerToClientEvents, TimeControl } from '../shared/types';
+import {
+  type ClientToServerEvents,
+  type ConnectionStatus,
+  type GameResult,
+  type GameState,
+  type PlayerColor,
+  type PromotionPiece,
+  type ServerToClientEvents,
+  type TimeControl,
+  SOCKET_EVENTS,
+} from '../shared/types.js';
+import { Lobby } from './components/Lobby.js';
+import { Chessboard } from './components/Chessboard.js';
+import { PlayerCard } from './components/PlayerCard.js';
+import { MoveHistory } from './components/MoveHistory.js';
+import { ChatPanel } from './components/ChatPanel.js';
+import { PromotionModal } from './components/PromotionModal.js';
+import { GameOverModal } from './components/GameOverModal.js';
+import { SettingsModal } from './components/settings/SettingsModal.js';
+import { GameReview } from './components/review/GameReview.js';
+import { HistoryView } from './components/review/HistoryView.js';
+import { PracticeBoard } from './components/training/PracticeBoard.js';
+import { PuzzlePlayer } from './components/training/PuzzlePlayer.js';
+import {
+  playMoveSound,
+  playCaptureSound,
+  playCheckSound,
+  playGameOverSound,
+} from './utils/sound.js';
+import { getCapturedPiecesAndScore } from './utils/chess-helpers.js';
+import { identifyOpening } from './utils/openings.js';
+import {
+  loadUserPreferences,
+  saveUserPreferences,
+  loadCustomThemes,
+  saveCustomThemes,
+  getActiveBoardTheme,
+  applyUiThemeToDom,
+} from './services/preferences.js';
+import {
+  getSavedGames,
+  saveCompletedGame,
+  deleteSavedGame,
+  toggleFavoriteGame,
+  type SavedGame,
+} from './services/game-history.js';
+import type { BoardTheme, UserPreferences } from './types/preferences.js';
 
-const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] as const;
-const RANKS = ['8', '7', '6', '5', '4', '3', '2', '1'] as const;
-const PIECES: Record<Color, Record<PieceSymbol, string>> = { w: { k: '♔', q: '♕', r: '♖', b: '♗', n: '♘', p: '♙' }, b: { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' } };
-const NAMES: Record<PieceSymbol, string> = { k: 'King', q: 'Queen', r: 'Rook', b: 'Bishop', n: 'Knight', p: 'Pawn' };
 const PLAYER_STORAGE_KEY = 'lan-chess-player-id';
-const TIME_CONTROL_OPTIONS: Array<{ label: string; value: TimeControl }> = [
-  { label: 'Unlimited', value: 'unlimited' },
-  { label: '3 + 0', value: '3+0' },
-  { label: '5 + 0', value: '5+0' },
-  { label: '10 + 0', value: '10+0' },
-];
 
-const formatClock = (ms: number | null) => {
-  if (ms === null) return 'Unlimited';
-  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-};
+function getStoredSessionId(): string | null {
+  if (typeof window === 'undefined') return null;
+  return window.localStorage.getItem(PLAYER_STORAGE_KEY);
+}
 
-const getOrCreatePlayerSessionId = () => {
-  const existing = window.localStorage.getItem(PLAYER_STORAGE_KEY);
-  if (existing) return existing;
+function storeSessionId(sessionId: string): void {
+  try {
+    window.localStorage.setItem(PLAYER_STORAGE_KEY, sessionId);
+  } catch {
+    // Storage may be unavailable (private mode / quota): the session simply
+    // won't survive a refresh.
+  }
+}
 
-  const created = globalThis.crypto?.randomUUID?.() ?? `player-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  window.localStorage.setItem(PLAYER_STORAGE_KEY, created);
-  return created;
-};
-type Promotion = { from: Square; to: Square };
-const sq = (file: string, rank: string) => `${file}${rank}` as Square;
-const playTone = (frequency: number, duration = 0.08, type: OscillatorType = 'sine', volume = 0.04) => {
-  const AudioConstructor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-  if (!AudioConstructor) return;
-  const context = new AudioConstructor();
-  const oscillator = context.createOscillator();
-  const gain = context.createGain();
-  oscillator.type = type;
-  oscillator.frequency.value = frequency;
-  gain.gain.value = volume;
-  oscillator.connect(gain);
-  gain.connect(context.destination);
-  oscillator.start();
-  oscillator.stop(context.currentTime + duration);
-  gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + duration);
-  setTimeout(() => context.close(), duration * 1000 + 80);
-};
+/**
+ * Builds a PGN with real headers — chess.js defaults would emit
+ * `White "?"` / `Result "*"` regardless of the actual game outcome.
+ */
+function buildGamePgn(
+  chess: Chess,
+  whiteName: string,
+  blackName: string,
+  winner: GameResult | null,
+  reason: string | null
+): string {
+  const result =
+    winner === 'w' ? '1-0' : winner === 'b' ? '0-1' : winner === 'draw' ? '1/2-1/2' : '*';
+  chess.setHeader('White', whiteName);
+  chess.setHeader('Black', blackName);
+  chess.setHeader('Result', result);
+  if (reason) chess.setHeader('Termination', reason);
+  return chess.pgn();
+}
+
+function copyToClipboard(text: string): Promise<boolean> {
+  if (navigator.clipboard && window.isSecureContext) {
+    return navigator.clipboard.writeText(text).then(() => true).catch(() => false);
+  }
+  try {
+    const el = document.createElement('textarea');
+    el.value = text;
+    el.style.position = 'fixed';
+    el.style.opacity = '0';
+    document.body.appendChild(el);
+    el.select();
+    const success = document.execCommand('copy');
+    document.body.removeChild(el);
+    return Promise.resolve(success);
+  } catch {
+    return Promise.resolve(false);
+  }
+}
 
 export function App() {
   const socket = useMemo<Socket<ServerToClientEvents, ClientToServerEvents>>(() => {
-    const serverUrl = import.meta.env.DEV ? `${window.location.protocol}//${window.location.hostname}:3001` : undefined;
+    const serverUrl = import.meta.env.VITE_SERVER_URL
+      ? import.meta.env.VITE_SERVER_URL
+      : import.meta.env.DEV
+      ? `${window.location.protocol}//${window.location.hostname}:3001`
+      : undefined;
     return io(serverUrl, { transports: ['websocket', 'polling'] }) as Socket<ServerToClientEvents, ClientToServerEvents>;
   }, []);
+
+  // Application navigation view
+  const [currentView, setCurrentView] = useState<'play' | 'history' | 'review' | 'practice' | 'puzzles'>('play');
+  const [reviewGame, setReviewGame] = useState<SavedGame | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  // Preferences & Customization state
+  const [preferences, setPreferences] = useState<UserPreferences>(() => loadUserPreferences());
+  const [customThemes, setCustomThemes] = useState<BoardTheme[]>(() => loadCustomThemes());
+  const [savedGames, setSavedGames] = useState<SavedGame[]>(() => getSavedGames());
+
+  // Multiplayer Game state
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [color, setColor] = useState<PlayerColor | null>(null);
   const [role, setRole] = useState<'player' | 'spectator'>('player');
-  const [playerName, setPlayerName] = useState('Player');
-  const [joinCode, setJoinCode] = useState('');
+  const [roomCodeInput, setRoomCodeInput] = useState('');
   const [hostUrl, setHostUrl] = useState<string | null>(null);
-  const [error, setError] = useState('');
-  const [selected, setSelected] = useState<Square | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [copiedNotification, setCopiedNotification] = useState<string | null>(null);
+
+  const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
   const [flipped, setFlipped] = useState(false);
-  const [promotion, setPromotion] = useState<Promotion | null>(null);
-  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
+  const [pendingPromotion, setPendingPromotion] = useState<{ from: Square; to: Square } | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
   const [timeControl, setTimeControl] = useState<TimeControl>('3+0');
-  const [chatInput, setChatInput] = useState('');
+  const [allowTakebacks, setAllowTakebacks] = useState(true);
+
+  const prevMovesCountRef = useRef(0);
+  const prevStatusRef = useRef<GameState['status']>('waiting');
+  // Sound preferences are read through a ref so that toggling a sound setting
+  // does not tear down and re-establish the socket connection mid-game.
+  const soundPrefsRef = useRef(preferences.sound);
+  useEffect(() => {
+    soundPrefsRef.current = preferences.sound;
+  }, [preferences.sound]);
 
   const chess = useMemo(() => new Chess(gameState?.fen), [gameState?.fen]);
-  const canMove = Boolean(gameState && role === 'player' && color && gameState.status === 'active' && gameState.turn === color);
 
+  // Active theme calculation
+  const activeTheme = useMemo(
+    () => getActiveBoardTheme(preferences.activeThemeId, customThemes),
+    [preferences.activeThemeId, customThemes]
+  );
+
+  // Opening and capture calculation, kept out of the render path (App re-renders
+  // on every socket message, selection change, and clock tick).
+  const activeOpening = useMemo(
+    () => (gameState ? identifyOpening(gameState.moves.map((m) => m.san)) : null),
+    [gameState]
+  );
+  const capturedSummary = useMemo(() => getCapturedPiecesAndScore(chess), [chess]);
+
+  // Apply UI Theme tokens on mount or preference change
   useEffect(() => {
-    const persistSessionId = (sessionId: string) => window.localStorage.setItem(PLAYER_STORAGE_KEY, sessionId);
+    applyUiThemeToDom(preferences.uiTheme);
+  }, [preferences.uiTheme]);
 
-    const reconnectNow = () => {
-      const sessionId = getOrCreatePlayerSessionId();
-      socket.emit('identify-session', { sessionId });
-    };
+  const canMove = Boolean(
+    gameState &&
+    role === 'player' &&
+    color &&
+    gameState.status === 'active' &&
+    gameState.turn === color
+  );
 
+  // Auto-orient board to Black's perspective when playing Black
+  useEffect(() => {
+    if (color === 'b') {
+      setFlipped(true);
+    } else if (color === 'w') {
+      setFlipped(false);
+    }
+  }, [color]);
+
+  const handleUpdatePreferences = (newPrefs: UserPreferences) => {
+    setPreferences(newPrefs);
+    saveUserPreferences(newPrefs);
+  };
+
+  const handleSaveCustomTheme = (newTheme: BoardTheme) => {
+    const updated = [newTheme, ...customThemes.filter((t) => t.id !== newTheme.id)];
+    setCustomThemes(updated);
+    saveCustomThemes(updated);
+    handleUpdatePreferences({ ...preferences, activeThemeId: newTheme.id });
+  };
+
+  const handleDeleteCustomTheme = (themeId: string) => {
+    const updated = customThemes.filter((t) => t.id !== themeId);
+    setCustomThemes(updated);
+    saveCustomThemes(updated);
+    if (preferences.activeThemeId === themeId) {
+      handleUpdatePreferences({ ...preferences, activeThemeId: 'wooden' });
+    }
+  };
+
+  // Socket setup & event listeners
+  useEffect(() => {
     const onConnect = () => {
       setConnectionStatus('connected');
-      reconnectNow();
+      const sessionId = getStoredSessionId();
+      if (sessionId) {
+        socket.emit(SOCKET_EVENTS.IDENTIFY_SESSION, { sessionId });
+      }
     };
-    const onDisconnect = () => {
-      setConnectionStatus('disconnected');
-    };
+
+    const onDisconnect = () => setConnectionStatus('disconnected');
+    const onReconnectAttempt = () => setConnectionStatus('reconnecting');
     const onSocketReconnect = () => {
       setConnectionStatus('connected');
-      reconnectNow();
+      const sessionId = getStoredSessionId();
+      if (sessionId) {
+        socket.emit(SOCKET_EVENTS.IDENTIFY_SESSION, { sessionId });
+      }
     };
-    const onReconnectAttempt = () => {
-      setConnectionStatus('reconnecting');
+
+    const onRoomCreated = (payload: { roomCode: string; playerColor: PlayerColor; sessionId: string; hostUrl: string | null }) => {
+      storeSessionId(payload.sessionId);
+      setColor(payload.playerColor);
+      setRole('player');
+      if (payload.hostUrl) setHostUrl(payload.hostUrl);
+      setError(null);
+      setCurrentView('play');
+      // Sync sound tracking to the new game without replaying sounds for
+      // moves that already happened.
+      prevMovesCountRef.current = -1;
+      prevStatusRef.current = 'waiting';
     };
-    const onRoomCreated = (room: { playerColor: PlayerColor; hostUrl: string | null; sessionId: string; role?: 'player' | 'spectator' }) => {
-      setColor(room.playerColor);
-      setRole(room.role ?? 'player');
-      setHostUrl(room.hostUrl);
-      setError('');
-      persistSessionId(room.sessionId);
+
+    const onRoomJoined = (payload: { roomCode: string; playerColor: PlayerColor | null; sessionId: string; role: 'player' | 'spectator' }) => {
+      storeSessionId(payload.sessionId);
+      setColor(payload.playerColor);
+      setRole(payload.role);
+      setError(null);
+      setCurrentView('play');
+      prevMovesCountRef.current = -1;
+      prevStatusRef.current = 'waiting';
     };
-    const onRoomJoined = (room: { playerColor: PlayerColor | null; sessionId: string; role?: 'player' | 'spectator' }) => {
-      setColor(room.playerColor);
-      setRole(room.role ?? (room.playerColor ? 'player' : 'spectator'));
-      setError('');
-      persistSessionId(room.sessionId);
-    };
+
     const onGameState = (state: GameState) => {
-      setError('');
       setGameState(state);
+      setError(null);
+
+      const soundPrefs = soundPrefsRef.current;
+      const currentMovesCount = state.moves.length;
+
+      // -1 marks a fresh room join: adopt the existing move count silently.
+      if (prevMovesCountRef.current === -1) {
+        prevMovesCountRef.current = currentMovesCount;
+        prevStatusRef.current = state.status;
+        // Reconnecting into a game that already ended must still save it.
+        if (state.status === 'finished') saveFinishedGame(state);
+        return;
+      }
+
+      // Sound triggers
+      if (currentMovesCount > prevMovesCountRef.current && soundPrefs.master) {
+        const lastMove = state.moves[currentMovesCount - 1];
+        if (lastMove?.captured && soundPrefs.capture) {
+          playCaptureSound();
+        } else if (soundPrefs.move) {
+          playMoveSound();
+        }
+
+        const tempChess = new Chess(state.fen);
+        if (tempChess.isCheck() && soundPrefs.check) {
+          playCheckSound();
+        }
+      }
+
+      if (state.status === 'finished' && prevStatusRef.current !== 'finished') {
+        if (soundPrefs.master && soundPrefs.gameEnd) {
+          playGameOverSound();
+        }
+        saveFinishedGame(state);
+      }
+
+      prevMovesCountRef.current = currentMovesCount;
+      prevStatusRef.current = state.status;
     };
-    const onGameError = ({ message }: { message: string }) => setError(message);
-    const onConnectionStatus = (payload: { status: ConnectionStatus }) => setConnectionStatus(payload.status);
+
+    const saveFinishedGame = (state: GameState) => {
+      try {
+        const finishedChess = new Chess();
+        for (const m of state.moves) {
+          try {
+            finishedChess.move({ from: m.from, to: m.to, promotion: m.promotion });
+          } catch {
+            break; // replay stops at the first inconsistent move; keep partial game
+          }
+        }
+        const sans = state.moves.map((m) => m.san);
+        const opening = identifyOpening(sans);
+
+        const savedGameItem: SavedGame = {
+          id: `game-${Date.now()}-${state.roomCode}`,
+          roomCode: state.roomCode,
+          date: Date.now(),
+          whiteName: state.whiteName,
+          blackName: state.blackName ?? 'Black',
+          winner: state.winner,
+          reason: state.reason,
+          timeControl: state.timeControl,
+          pgn: buildGamePgn(finishedChess, state.whiteName, state.blackName ?? 'Black', state.winner, state.reason),
+          moves: state.moves,
+          fen: state.fen,
+          opening,
+        };
+
+        saveCompletedGame(savedGameItem);
+        setSavedGames(getSavedGames());
+      } catch {
+        // Graceful ignore
+      }
+    };
+
+    const onClockUpdate = ({ roomCode, whiteTimeMs, blackTimeMs }: { roomCode: string; whiteTimeMs: number | null; blackTimeMs: number | null }) => {
+      setGameState((prev) =>
+        prev && prev.roomCode === roomCode ? { ...prev, whiteTimeMs, blackTimeMs } : prev
+      );
+    };
+
+    const onGameError = ({ message }: { message: string }) => {
+      setError(message);
+    };
+
+    const onConnectionStatus = (payload: { status: ConnectionStatus }) => {
+      setConnectionStatus(payload.status);
+    };
 
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
     socket.io.on('reconnect', onSocketReconnect);
     socket.io.on('reconnect_attempt', onReconnectAttempt);
-    socket.on('room-created', onRoomCreated);
-    socket.on('room-joined', onRoomJoined);
-    socket.on('game-state', onGameState);
-    socket.on('game-error', onGameError);
-    socket.on('connection-status', onConnectionStatus);
+
+    socket.on(SOCKET_EVENTS.ROOM_CREATED, onRoomCreated);
+    socket.on(SOCKET_EVENTS.ROOM_JOINED, onRoomJoined);
+    socket.on(SOCKET_EVENTS.GAME_STATE, onGameState);
+    socket.on(SOCKET_EVENTS.CLOCK_UPDATE, onClockUpdate);
+    socket.on(SOCKET_EVENTS.GAME_ERROR, onGameError);
+    socket.on(SOCKET_EVENTS.CONNECTION_STATUS, onConnectionStatus);
+
     socket.connect();
 
     return () => {
@@ -130,139 +361,696 @@ export function App() {
       socket.off('disconnect', onDisconnect);
       socket.io.off('reconnect', onSocketReconnect);
       socket.io.off('reconnect_attempt', onReconnectAttempt);
-      socket.off('room-created', onRoomCreated);
-      socket.off('room-joined', onRoomJoined);
-      socket.off('game-state', onGameState);
-      socket.off('game-error', onGameError);
-      socket.off('connection-status', onConnectionStatus);
+      socket.off(SOCKET_EVENTS.ROOM_CREATED, onRoomCreated);
+      socket.off(SOCKET_EVENTS.ROOM_JOINED, onRoomJoined);
+      socket.off(SOCKET_EVENTS.GAME_STATE, onGameState);
+      socket.off(SOCKET_EVENTS.CLOCK_UPDATE, onClockUpdate);
+      socket.off(SOCKET_EVENTS.GAME_ERROR, onGameError);
+      socket.off(SOCKET_EVENTS.CONNECTION_STATUS, onConnectionStatus);
       socket.disconnect();
     };
   }, [socket]);
 
+  // Clear selection if not active turn
   useEffect(() => {
-    if (!selected || !gameState || !color) return;
+    if (!canMove) {
+      setSelectedSquare(null);
+      setPendingPromotion(null);
+    }
+  }, [canMove]);
 
-    const piece = chess.get(selected);
-    if (!piece || piece.color !== color || !canMove) {
-      setSelected(null);
-      setPromotion(null);
+  // Legal targets calculation
+  const legalTargets = useMemo(() => {
+    if (!selectedSquare || !canMove) return new Map<Square, Move>();
+    const moves = chess.moves({ square: selectedSquare, verbose: true });
+    return new Map<Square, Move>(moves.map((m) => [m.to, m]));
+  }, [chess, selectedSquare, canMove]);
+
+  const executeMove = useCallback((from: Square, to: Square, promotionPiece?: PromotionPiece) => {
+    if (!canMove) return;
+    socket.emit(SOCKET_EVENTS.MAKE_MOVE, { from, to, promotion: promotionPiece });
+    setSelectedSquare(null);
+    setPendingPromotion(null);
+  }, [canMove, socket]);
+
+  const handleSquareClick = useCallback((square: Square) => {
+    if (!gameState || gameState.status !== 'active' || !canMove || pendingPromotion) return;
+
+    const piece = chess.get(square);
+    const targetMove = legalTargets.get(square);
+
+    if (selectedSquare && targetMove) {
+      if (targetMove.promotion) {
+        setPendingPromotion({ from: selectedSquare, to: square });
+      } else {
+        executeMove(selectedSquare, square);
+      }
       return;
     }
 
-    if (gameState.status !== 'active') {
-      setSelected(null);
-      setPromotion(null);
+    if (piece && piece.color === color) {
+      setSelectedSquare(square);
+    } else {
+      setSelectedSquare(null);
     }
-  }, [selected, gameState, color, chess, canMove]);
-  const legalMoves = useMemo<Move[]>(() => selected && canMove ? chess.moves({ square: selected, verbose: true }) : [], [chess, selected, canMove]);
-  const targets = new Map(legalMoves.map((move) => [move.to, move]));
-  const files = flipped ? [...FILES].reverse() : FILES;
-  const ranks = flipped ? [...RANKS].reverse() : RANKS;
-  const lastMove = gameState?.moves.at(-1);
+  }, [gameState, canMove, pendingPromotion, chess, legalTargets, selectedSquare, color, executeMove]);
 
-  function requestMove(from: Square, to: Square, promotionPiece?: PromotionPiece) {
+  const handlePieceDrop = useCallback((from: Square, to: Square) => {
     if (!canMove) return;
-    socket.emit('make-move', { from, to, promotion: promotionPiece });
-    playTone(660, 0.09, 'triangle', 0.025);
-    setSelected(null); setPromotion(null);
-  }
-  function pick(square: Square) {
-    if (!gameState || gameState.status !== 'active' || !canMove || promotion) return;
-    const piece = chess.get(square); const target = targets.get(square);
-    if (selected && target) { if (target.promotion) setPromotion({ from: selected, to: square }); else requestMove(selected, square); return; }
-    setSelected(piece?.color === color ? square : null);
-  }
-  function dragStart(event: DragEvent<HTMLSpanElement>, square: Square) {
-    const piece = chess.get(square);
-    if (!gameState || gameState.status !== 'active' || !canMove || !piece || piece.color !== color) { event.preventDefault(); return; }
-    event.dataTransfer.setData('text/plain', square); event.dataTransfer.effectAllowed = 'move'; setSelected(square);
-  }
-  function drop(event: DragEvent<HTMLButtonElement>, to: Square) {
-    event.preventDefault(); const from = event.dataTransfer.getData('text/plain') as Square; const move = targets.get(to);
-    if (!from || !move || move.from !== from) return;
-    if (move.promotion) setPromotion({ from, to }); else requestMove(from, to);
-  }
-  function createGame() { socket.emit('create-game', { playerName, sessionId: getOrCreatePlayerSessionId(), timeControl }); }
-  function joinGame() { socket.emit('join-game', { roomCode: joinCode, playerName, sessionId: getOrCreatePlayerSessionId() }); }
-  function spectateGame() { socket.emit('join-spectator', { roomCode: joinCode, playerName, sessionId: getOrCreatePlayerSessionId() }); }
-  function resignGame() {
+    const moves = chess.moves({ square: from, verbose: true });
+    const targetMove = moves.find((m) => m.to === to);
+    if (!targetMove) return;
+
+    if (targetMove.promotion) {
+      setPendingPromotion({ from, to });
+    } else {
+      executeMove(from, to);
+    }
+  }, [canMove, chess, executeMove]);
+
+  // Lobby actions
+  const handleCreateGame = () => {
+    const sessionId = getStoredSessionId();
+    socket.emit(SOCKET_EVENTS.CREATE_GAME, {
+      playerName: preferences.playerName,
+      sessionId,
+      timeControl,
+      allowTakebacks,
+    });
+  };
+
+  const handleJoinGame = () => {
+    const sessionId = getStoredSessionId();
+    socket.emit(SOCKET_EVENTS.JOIN_GAME, {
+      roomCode: roomCodeInput,
+      playerName: preferences.playerName,
+      sessionId,
+    });
+  };
+
+  const handleJoinSpectator = () => {
+    const sessionId = getStoredSessionId();
+    socket.emit(SOCKET_EVENTS.JOIN_SPECTATOR, {
+      roomCode: roomCodeInput,
+      playerName: preferences.playerName,
+      sessionId,
+    });
+  };
+
+  // Game actions
+  const handleResign = () => {
     if (!gameState || gameState.status !== 'active' || role !== 'player' || !color) return;
-    if (!window.confirm('Resign this game?')) return;
-    socket.emit('resign-game');
-    playTone(220, 0.12, 'sawtooth', 0.03);
-  }
-  function offerDraw() {
+    if (window.confirm('Are you sure you want to resign this game?')) {
+      socket.emit(SOCKET_EVENTS.RESIGN_GAME);
+    }
+  };
+
+  const handleOfferDraw = () => {
     if (!gameState || gameState.status !== 'active' || role !== 'player' || !color) return;
     if (gameState.drawOfferBy) {
-      setError('A draw is already pending.');
+      setError('A draw offer is already pending.');
       return;
     }
-    if (!window.confirm('Offer a draw to the opponent?')) return;
-    socket.emit('offer-draw');
-    playTone(440, 0.08, 'triangle', 0.03);
-  }
-  function respondToDraw(accept: boolean) {
-    if (!gameState || gameState.drawOfferBy === null || role !== 'player' || !color || gameState.drawOfferBy === color) return;
-    socket.emit('respond-draw', { accept });
-  }
-  function requestRematch() {
-    if (!gameState || gameState.status !== 'finished' || role !== 'player' || !color) return;
-    socket.emit('request-rematch');
-    playTone(520, 0.07, 'triangle', 0.03);
-  }
-  function respondToRematch(accept: boolean) {
-    if (!gameState || gameState.status !== 'finished' || role !== 'player' || !color) return;
-    socket.emit('respond-rematch', { accept });
-    playTone(accept ? 680 : 180, 0.09, accept ? 'triangle' : 'square', 0.03);
-  }
-  function leaveRoom() {
-    socket.emit('leave-room');
+    if (window.confirm('Offer a draw to your opponent?')) {
+      socket.emit(SOCKET_EVENTS.OFFER_DRAW);
+    }
+  };
+
+  const handleRespondDraw = (accept: boolean) => {
+    socket.emit(SOCKET_EVENTS.RESPOND_DRAW, { accept });
+  };
+
+  const handleRequestTakeback = () => {
+    if (!gameState || gameState.status !== 'active' || role !== 'player' || !color) return;
+    if (window.confirm('Request a takeback from your opponent?')) {
+      socket.emit(SOCKET_EVENTS.REQUEST_TAKEBACK);
+    }
+  };
+
+  const handleRespondTakeback = (accept: boolean) => {
+    socket.emit(SOCKET_EVENTS.RESPOND_TAKEBACK, { accept });
+  };
+
+  const handleRequestRematch = () => {
+    socket.emit(SOCKET_EVENTS.REQUEST_REMATCH);
+  };
+
+  const handleRespondRematch = (accept: boolean) => {
+    socket.emit(SOCKET_EVENTS.RESPOND_REMATCH, { accept });
+  };
+
+  const handleLeaveRoom = () => {
+    socket.emit(SOCKET_EVENTS.LEAVE_ROOM);
     setGameState(null);
     setColor(null);
-    setSelected(null);
-    setPromotion(null);
-    setChatInput('');
-    setError('');
+    setSelectedSquare(null);
+    setPendingPromotion(null);
+    setError(null);
+    setCurrentView('play');
+    prevMovesCountRef.current = 0;
+    prevStatusRef.current = 'waiting';
+  };
+
+  const handleSendChat = (message: string) => {
+    socket.emit(SOCKET_EVENTS.SEND_CHAT, { message });
+  };
+
+  const handleShareRoom = async () => {
+    if (!gameState) return;
+    const shareText = hostUrl
+      ? `Join my LAN Chess match!\nRoom Code: ${gameState.roomCode}\nLink: ${hostUrl}`
+      : `LAN Chess Room Code: ${gameState.roomCode}`;
+    const success = await copyToClipboard(shareText);
+    if (success) {
+      setCopiedNotification('Room details copied to clipboard!');
+      setTimeout(() => setCopiedNotification(null), 3000);
+    }
+  };
+
+  // Launch review from current game
+  const handleOpenCurrentGameReview = () => {
+    if (!gameState) return;
+    const finishedChess = new Chess();
+    for (const m of gameState.moves) {
+      try {
+        finishedChess.move({ from: m.from, to: m.to, promotion: m.promotion });
+      } catch {
+        break;
+      }
+    }
+
+    const gameRecord: SavedGame = {
+      id: `current-review-${Date.now()}`,
+      roomCode: gameState.roomCode,
+      date: Date.now(),
+      whiteName: gameState.whiteName,
+      blackName: gameState.blackName ?? 'Black',
+      winner: gameState.winner,
+      reason: gameState.reason,
+      timeControl: gameState.timeControl,
+      pgn: buildGamePgn(finishedChess, gameState.whiteName, gameState.blackName ?? 'Black', gameState.winner, gameState.reason),
+      moves: gameState.moves,
+      fen: gameState.fen,
+      opening: identifyOpening(gameState.moves.map((m) => m.san)),
+    };
+
+    setReviewGame(gameRecord);
+    setCurrentView('review');
+  };
+
+  // History item select
+  const handleSelectHistoryGame = (game: SavedGame) => {
+    setReviewGame(game);
+    setCurrentView('review');
+  };
+
+  const handleDeleteHistoryGame = (id: string) => {
+    deleteSavedGame(id);
+    setSavedGames(getSavedGames());
+  };
+
+  const handleToggleFavoriteHistoryGame = (id: string) => {
+    toggleFavoriteGame(id);
+    setSavedGames(getSavedGames());
+  };
+
+  // RENDER: Review View
+  if (currentView === 'review' && reviewGame) {
+    return (
+      <GameReview
+        game={reviewGame}
+        theme={activeTheme}
+        pieceSet={preferences.pieceSet}
+        highlightStyle={preferences.highlightStyle}
+        boardSettings={preferences.boardSettings}
+        onExitReview={() => setCurrentView('play')}
+      />
+    );
   }
 
-  function sendChat() {
-    if (!gameState || !chatInput.trim()) return;
-    socket.emit('send-chat', { message: chatInput.trim() });
-    setChatInput('');
+  // RENDER: History View
+  if (currentView === 'history') {
+    return (
+      <HistoryView
+        games={savedGames}
+        playerName={preferences.playerName}
+        onSelectGame={handleSelectHistoryGame}
+        onDeleteGame={handleDeleteHistoryGame}
+        onToggleFavorite={handleToggleFavoriteHistoryGame}
+        onBackToPlay={() => setCurrentView('play')}
+      />
+    );
   }
 
-  if (!gameState) return <main className="min-h-screen bg-slate-950 px-4 py-12 text-slate-100"><section className="mx-auto max-w-lg rounded-2xl border border-slate-700 bg-slate-900 p-7 shadow-2xl shadow-black/30"><p className="text-xs font-bold tracking-[.28em] text-amber-400">LOCAL NETWORK</p><h1 className="mt-1 text-4xl font-bold">LAN CHESS</h1><p className="mt-3 text-slate-400">Create a room, join a friend on the same Wi‑Fi, or watch from the sidelines.</p><label className="mt-7 block text-sm font-medium">Your name<input value={playerName} onChange={(event) => setPlayerName(event.target.value)} maxLength={24} className="field" placeholder="Player name" /></label><label className="mt-5 block text-sm font-medium">Time control<select value={timeControl} onChange={(event) => setTimeControl(event.target.value as TimeControl)} className="field mt-2">{TIME_CONTROL_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><button type="button" onClick={createGame} className="action-button action-primary mt-5 w-full">Create game</button><div className="my-6 border-t border-slate-700" /><label className="block text-sm font-medium">Room code<input value={joinCode} onChange={(event) => setJoinCode(event.target.value.toUpperCase())} maxLength={5} className="field code-field" placeholder="ABCDE" /></label><div className="mt-3 grid gap-3 sm:grid-cols-2"><button type="button" onClick={joinGame} disabled={!joinCode.trim()} className="action-button action-secondary w-full disabled:cursor-not-allowed disabled:opacity-40">Join as player</button><button type="button" onClick={spectateGame} disabled={!joinCode.trim()} className="action-button action-secondary w-full disabled:cursor-not-allowed disabled:opacity-40">Watch as spectator</button></div>{error && <p className="mt-5 rounded-lg bg-rose-950 px-3 py-2 text-sm text-rose-200">{error}</p>}</section></main>;
+  // RENDER: Practice Sandbox View
+  if (currentView === 'practice') {
+    return (
+      <PracticeBoard
+        theme={activeTheme}
+        pieceSet={preferences.pieceSet}
+        highlightStyle={preferences.highlightStyle}
+        boardSettings={preferences.boardSettings}
+        onBackToPlay={() => setCurrentView('play')}
+      />
+    );
+  }
 
-  const capturesByWhite = gameState.moves.filter((move) => move.color === 'w' && move.captured);
-  const capturesByBlack = gameState.moves.filter((move) => move.color === 'b' && move.captured);
+  // RENDER: Puzzles View
+  if (currentView === 'puzzles') {
+    return (
+      <PuzzlePlayer
+        theme={activeTheme}
+        pieceSet={preferences.pieceSet}
+        highlightStyle={preferences.highlightStyle}
+        boardSettings={preferences.boardSettings}
+        onBackToPlay={() => setCurrentView('play')}
+      />
+    );
+  }
+
+  // RENDER: Lobby (when not in a room)
+  if (!gameState) {
+    return (
+      <div className="min-h-screen px-4 pb-10">
+        {/* Top Navbar */}
+        <nav className="mx-auto flex max-w-4xl items-center justify-between py-4 border-b border-slate-800/80 mb-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">♟</span>
+            <span className="font-black text-sm tracking-wider text-white">LAN CHESS V2</span>
+          </div>
+
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <button
+              type="button"
+              onClick={() => setCurrentView('history')}
+              className="rounded-lg border border-slate-800 bg-slate-900/60 px-2.5 py-1.5 text-xs text-slate-300 hover:border-slate-700 hover:text-white"
+            >
+              📜 Archives ({savedGames.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setCurrentView('puzzles')}
+              className="rounded-lg border border-slate-800 bg-slate-900/60 px-2.5 py-1.5 text-xs text-slate-300 hover:border-slate-700 hover:text-white"
+            >
+              🧩 Puzzles
+            </button>
+            <button
+              type="button"
+              onClick={() => setCurrentView('practice')}
+              className="rounded-lg border border-slate-800 bg-slate-900/60 px-2.5 py-1.5 text-xs text-slate-300 hover:border-slate-700 hover:text-white"
+            >
+              🔬 Sandbox
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsSettingsOpen(true)}
+              className="rounded-lg border border-slate-800 bg-slate-900/60 p-1.5 text-slate-300 hover:border-amber-400 hover:text-amber-300"
+              title="Settings & Themes"
+            >
+              ⚙️
+            </button>
+          </div>
+        </nav>
+
+        <Lobby
+          playerName={preferences.playerName}
+          onNameChange={(name) => handleUpdatePreferences({ ...preferences, playerName: name })}
+          roomCode={roomCodeInput}
+          onRoomCodeChange={setRoomCodeInput}
+          timeControl={timeControl}
+          onTimeControlChange={setTimeControl}
+          allowTakebacks={allowTakebacks}
+          onAllowTakebacksChange={setAllowTakebacks}
+          onCreateGame={handleCreateGame}
+          onJoinGame={handleJoinGame}
+          onJoinSpectator={handleJoinSpectator}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+          hostUrl={hostUrl}
+          error={error}
+          isConnecting={connectionStatus === 'connecting'}
+        />
+
+        <SettingsModal
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+          preferences={preferences}
+          customThemes={customThemes}
+          onUpdatePreferences={handleUpdatePreferences}
+          onSaveCustomTheme={handleSaveCustomTheme}
+          onDeleteCustomTheme={handleDeleteCustomTheme}
+        />
+      </div>
+    );
+  }
+
+  // Active match data calculation
+  const { capturedWhite, capturedBlack, whiteAdvantage, blackAdvantage } = capturedSummary;
+
+  const opponentColor: PlayerColor = color === 'b' ? 'w' : 'b';
+  const opponentName = opponentColor === 'w' ? gameState.whiteName : (gameState.blackName ?? 'Waiting for opponent...');
+  const myName = color === 'w' ? gameState.whiteName : (gameState.blackName ?? preferences.playerName);
+
+  const lastMove = gameState.moves.at(-1) ?? null;
   const currentMoveNumber = Math.floor(gameState.moves.length / 2) + 1;
-  const connectionLabel = connectionStatus === 'connected' ? '🟢 Connected' : connectionStatus === 'reconnecting' ? '🟡 Reconnecting...' : '🔴 Disconnected';
-  const connectionClasses = connectionStatus === 'connected' ? 'bg-emerald-950 text-emerald-300' : connectionStatus === 'reconnecting' ? 'bg-amber-950 text-amber-300' : 'bg-rose-950 text-rose-300';
-  const whiteLowTime = gameState.whiteTimeMs !== null && gameState.whiteTimeMs <= 15000;
-  const blackLowTime = gameState.blackTimeMs !== null && gameState.blackTimeMs <= 15000;
-  const myColor = color ?? 'w';
-  const opponentColor = myColor === 'w' ? 'b' : 'w';
-  const myRematchRequested = gameState.rematchRequests[myColor];
-  const opponentRematchRequested = gameState.rematchRequests[opponentColor];
 
-  return <main className="min-h-screen bg-slate-950 px-4 py-6 text-slate-100 sm:px-6 lg:px-8 lg:py-10"><div className="mx-auto max-w-7xl">
-    <header className="mb-6 flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-bold tracking-[.28em] text-amber-400">ROOM {gameState.roomCode}</p><h1 className="mt-1 text-3xl font-bold sm:text-4xl">LAN CHESS</h1></div><div className="flex items-center gap-2"><span className={`rounded-full px-3 py-1 text-sm font-bold ${connectionClasses}`}>{connectionLabel}</span><span className={`rounded-full px-3 py-1 text-sm font-bold ${role === 'spectator' ? 'bg-violet-500/20 text-violet-200' : color === 'w' ? 'bg-slate-100 text-slate-950' : 'bg-slate-700 text-white'}`}>{role === 'spectator' ? 'Spectator' : `You are ${color === 'w' ? 'White' : 'Black'}`}</span>{gameState.spectatorCount > 0 && <span className="rounded-full border border-slate-600 bg-slate-800 px-2.5 py-1 text-xs font-semibold uppercase tracking-[.2em] text-slate-300">{gameState.spectatorCount} Spectators</span>}</div></header>
-    {gameState.status === 'waiting' && <section className="mb-5 rounded-xl border border-amber-500/50 bg-amber-400/10 p-4"><p className="font-bold text-amber-300">{gameState.message}</p>{gameState.blackName ? <p className="mt-1 text-sm text-slate-300">Reconnect the opponent to continue.</p> : <p className="mt-1 text-sm text-slate-300">Share room code <b className="font-mono text-lg tracking-widest text-white">{gameState.roomCode}</b>{hostUrl && <> or open <a className="text-amber-300 underline" href={hostUrl}>{hostUrl}</a></>} on the other device.</p>}</section>}
-    {gameState.drawOfferBy !== null && gameState.drawOfferBy !== color && gameState.status === 'active' && <div className="mb-4 rounded-xl border border-amber-500/50 bg-amber-500/10 p-3"><p className="font-bold text-amber-300">Draw offered</p><div className="mt-3 flex gap-2"><button type="button" onClick={() => respondToDraw(true)} className="action-button action-primary flex-1">[ ACCEPT ]</button><button type="button" onClick={() => respondToDraw(false)} className="action-button action-secondary flex-1">[ DECLINE ]</button></div></div>}
-    {gameState.status === 'active' && role === 'player' && <div className="mb-4 flex flex-wrap gap-2"><button type="button" onClick={resignGame} className="action-button action-secondary">[ RESIGN ]</button><button type="button" onClick={offerDraw} disabled={gameState.drawOfferBy !== null} className="action-button action-secondary disabled:cursor-not-allowed disabled:opacity-40">[ OFFER DRAW ]</button></div>}
-    {error && <p className="mb-4 rounded-lg bg-rose-950 px-3 py-2 text-sm text-rose-200">{error}</p>}
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start"><section className="mx-auto w-full max-w-[46rem]"><div className="mb-3 flex items-center justify-between rounded-xl border border-slate-700 bg-slate-900 px-4 py-3"><p className="font-semibold"><span className={chess.isCheck() ? 'text-rose-400' : 'text-emerald-400'}>●</span> {gameState.message}</p><span className="text-sm text-slate-400">Move {currentMoveNumber}</span></div><div className="board-shell"><div className="chessboard" role="grid" aria-label="Chessboard">
-      {ranks.map((rank, row) => files.map((file, column) => { const square = sq(file, rank); const piece = chess.get(square); const move = targets.get(square); const last = lastMove?.from === square || lastMove?.to === square; const light = (FILES.indexOf(file as typeof FILES[number]) + Number(rank)) % 2 !== 0; return <button key={square} type="button" role="gridcell" aria-label={`${square}${piece ? `, ${piece.color === 'w' ? 'white' : 'black'} ${NAMES[piece.type]}` : ''}`} onClick={() => pick(square)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => drop(event, square)} className={`square ${light ? 'square-light' : 'square-dark'} ${selected === square ? 'selected-square' : ''} ${last ? 'last-move' : ''} ${chess.isCheck() && piece?.type === 'k' && piece.color === chess.turn() ? 'checked-king' : ''}`}>{column === 0 && <span className={`rank-label ${light ? 'dark-label' : 'light-label'}`}>{rank}</span>}{row === 7 && <span className={`file-label ${light ? 'dark-label' : 'light-label'}`}>{file}</span>}{move && <span className={move.captured || piece ? 'legal-capture' : 'legal-dot'} />}{piece && <span draggable onDragStart={(event) => dragStart(event, square)} className={`piece piece-${piece.color}`}>{PIECES[piece.color][piece.type]}</span>}</button>; }))}
-    </div></div></section>
-    <aside className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1"><section className="panel sm:col-span-2 lg:col-span-1"><div className="flex justify-between"><h2>Players</h2><span className="text-sm text-slate-400">{gameState.turn === 'w' ? 'White' : 'Black'} to move</span></div><div className={`mt-3 rounded-xl border px-3 py-2 ${gameState.turn === 'w' ? 'border-amber-400 bg-amber-500/10' : 'border-slate-700 bg-slate-800/60'}`}><div className="flex items-center justify-between"><p>♔ {gameState.whiteName}</p><span className={`font-mono text-sm ${whiteLowTime ? 'text-rose-300' : 'text-emerald-300'}`}>{formatClock(gameState.whiteTimeMs)}</span></div></div><div className={`mt-2 rounded-xl border px-3 py-2 ${gameState.turn === 'b' ? 'border-amber-400 bg-amber-500/10' : 'border-slate-700 bg-slate-800/60'}`}><div className="flex items-center justify-between"><p className="text-slate-300">♚ {gameState.blackName ?? 'Waiting for opponent'}</p><span className={`font-mono text-sm ${blackLowTime ? 'text-rose-300' : 'text-emerald-300'}`}>{formatClock(gameState.blackTimeMs)}</span></div></div><div className="mt-3 text-xs uppercase tracking-[.2em] text-slate-400">Time control: {gameState.timeControl === 'unlimited' ? 'Unlimited' : gameState.timeControl}</div><button type="button" onClick={() => setFlipped((value) => !value)} className="action-button action-secondary mt-4 w-full">Flip board</button></section><section className="panel"><h2>Captured by White</h2><Captured moves={capturesByWhite} /><h2 className="mt-5">Captured by Black</h2><Captured moves={capturesByBlack} /></section><section className="panel sm:col-span-2 lg:col-span-1"><div className="mb-2 flex items-center justify-between"><h2>Room chat</h2><span className="text-xs uppercase tracking-[.2em] text-slate-400">{gameState.chatMessages.length} messages</span></div><div className="chat-panel">{gameState.chatMessages.length ? gameState.chatMessages.map((entry) => (<div key={entry.id} className={`chat-message ${entry.sender === playerName ? 'chat-self' : ''}`}><p className="chat-meta"><span>{entry.sender === playerName ? 'You' : entry.sender}</span><time>{new Date(entry.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></p><p>{entry.message}</p></div>)) : <p className="empty-history">No messages yet. Start the conversation.</p>}</div><div className="chat-composer"><input type="text" value={chatInput} onChange={(event) => setChatInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); sendChat(); } }} maxLength={180} placeholder="Message the room..." className="field" /><button type="button" onClick={sendChat} className="action-button action-primary mt-2 w-full">Send</button></div></section><section className="panel min-h-48 sm:col-span-2 lg:col-span-1"><h2>Move history</h2><ol className="move-list">{Array.from({ length: Math.ceil(gameState.moves.length / 2) }, (_, index) => <li key={index}><span>{index + 1}.</span><b>{gameState.moves[index * 2]?.san}</b><b>{gameState.moves[index * 2 + 1]?.san ?? ''}</b></li>)}{!gameState.moves.length && <li className="empty-history">Moves will appear here.</li>}</ol></section></aside></div>  </div>{promotion && <div className="promotion-backdrop" role="dialog" aria-modal="true"><section className="promotion-dialog"><p className="text-sm font-bold tracking-[.18em] text-amber-400">PAWN PROMOTION</p><h2>Choose a piece</h2><div className="mt-5 grid grid-cols-4 gap-2">{(['q', 'r', 'b', 'n'] as PromotionPiece[]).map((piece) => <button key={piece} type="button" onClick={() => requestMove(promotion.from, promotion.to, piece)} className="promotion-choice">{PIECES[color!][piece]}</button>)}</div></section></div>}{gameState.status === 'finished' && (() => {
-        if (role !== 'player' || !color) {
-          return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4"><div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 text-center shadow-2xl shadow-black/40"><p className="text-xs font-bold tracking-[.28em] text-amber-400">GAME OVER</p><h2 className="mt-3 text-3xl font-bold">Winner: {gameState.winner === 'draw' ? 'Draw' : gameState.winner === 'w' ? 'White' : 'Black'}</h2><p className="mt-2 text-slate-300">Reason: {gameState.reason ?? 'Game finished'}</p><div className="mt-6 flex flex-col gap-3 sm:flex-row"><button type="button" onClick={leaveRoom} className="action-button action-secondary flex-1">[ RETURN HOME ]</button></div></div></div>;
-        }
+  const opponentDisconnected = gameState.message.toLowerCase().includes('disconnected') || gameState.message.toLowerCase().includes('reconnection');
 
-        const showOpponentRequest = opponentRematchRequested && !myRematchRequested;
-        const showWaiting = myRematchRequested && !opponentRematchRequested;
-        const showDefaultRequest = !myRematchRequested && !opponentRematchRequested;
+  return (
+    <div className="mx-auto min-h-screen max-w-6xl px-3 py-4 sm:px-6 sm:py-6">
+      {/* Top Header Bar */}
+      <header className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold tracking-[.25em] text-amber-400">
+              ROOM {gameState.roomCode}
+            </span>
+            {activeOpening && (
+              <span className="text-xs font-semibold text-amber-300/90 hidden sm:inline">
+                · {activeOpening.name}
+              </span>
+            )}
+          </div>
+          <h1 className="mt-0.5 text-2xl font-black tracking-tight text-white sm:text-3xl">
+            LAN CHESS
+          </h1>
+        </div>
 
-        return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4"><div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 text-center shadow-2xl shadow-black/40"><p className="text-xs font-bold tracking-[.28em] text-amber-400">GAME OVER</p><h2 className="mt-3 text-3xl font-bold">Winner: {gameState.winner === 'draw' ? 'Draw' : gameState.winner === 'w' ? 'White' : 'Black'}</h2><p className="mt-2 text-slate-300">Reason: {gameState.reason ?? 'Game finished'}</p>{showOpponentRequest && <p className="mt-4 rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">Opponent wants a rematch.</p>}{showWaiting && <p className="mt-4 rounded-lg border border-emerald-500/50 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">Rematch requested. Waiting for opponent approval.</p>}{showOpponentRequest ? <div className="mt-4 flex flex-col gap-3 sm:flex-row"><button type="button" onClick={() => respondToRematch(true)} className="action-button action-primary flex-1">[ ACCEPT REMATCH ]</button><button type="button" onClick={() => respondToRematch(false)} className="action-button action-secondary flex-1">[ DECLINE ]</button></div> : showWaiting ? <div className="mt-6 flex flex-col gap-3 sm:flex-row"><button type="button" onClick={requestRematch} className="action-button action-primary flex-1" disabled>[ REMATCH REQUESTED ]</button><button type="button" onClick={leaveRoom} className="action-button action-secondary flex-1">[ RETURN HOME ]</button></div> : showDefaultRequest ? <div className="mt-6 flex flex-col gap-3 sm:flex-row"><button type="button" onClick={requestRematch} className="action-button action-primary flex-1">[ REMATCH ]</button><button type="button" onClick={leaveRoom} className="action-button action-secondary flex-1">[ RETURN HOME ]</button></div> : <div className="mt-6 flex flex-col gap-3 sm:flex-row"><button type="button" onClick={leaveRoom} className="action-button action-secondary flex-1">[ RETURN HOME ]</button></div>}</div></div>; })()}</main>}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Connection status badge */}
+          <span
+            className={`rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider ${
+              connectionStatus === 'connected'
+                ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/60'
+                : connectionStatus === 'connecting' || connectionStatus === 'reconnecting'
+                ? 'bg-amber-950 text-amber-300 border border-amber-800/60 animate-pulse'
+                : 'bg-rose-950 text-rose-300 border border-rose-800/60'
+            }`}
+          >
+            {connectionStatus}
+          </span>
 
-function Captured({ moves }: { moves: GameMove[] }) { return <div className="captured-pieces">{moves.length ? moves.map((move, index) => <span key={`${move.from}-${move.to}-${index}`} title={NAMES[move.captured!] as string}>{PIECES[move.color === 'w' ? 'b' : 'w'][move.captured!]}</span>) : <span className="text-sm text-slate-500">None</span>}</div>; }
+          {/* Role badge */}
+          <span
+            className={`rounded-full px-3 py-0.5 text-xs font-bold ${
+              role === 'spectator'
+                ? 'bg-violet-950 text-violet-300 border border-violet-800'
+                : color === 'w'
+                ? 'bg-slate-100 text-slate-900'
+                : 'bg-slate-800 text-white border border-slate-700'
+            }`}
+          >
+            {role === 'spectator' ? 'Spectating' : `You: ${color === 'w' ? 'White' : 'Black'}`}
+          </span>
+
+          {gameState.spectatorCount > 0 && (
+            <span className="rounded-full border border-slate-700 bg-slate-800/80 px-2.5 py-0.5 text-xs font-semibold text-slate-300">
+              {gameState.spectatorCount} Spectators
+            </span>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setFlipped((f) => !f)}
+            className="action-button action-secondary px-2.5 py-1 text-xs"
+            title="Flip board perspective"
+          >
+            Flip Board
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsSettingsOpen(true)}
+            className="action-button action-secondary px-2.5 py-1 text-xs"
+            title="Settings & Themes"
+          >
+            ⚙️
+          </button>
+
+          <button
+            type="button"
+            onClick={handleLeaveRoom}
+            className="action-button action-secondary px-2.5 py-1 text-xs text-rose-300 hover:border-rose-700 hover:text-rose-200"
+          >
+            Leave
+          </button>
+        </div>
+      </header>
+
+      {/* Copy Notification Toast */}
+      {copiedNotification && (
+        <div className="mb-3 rounded-lg border border-emerald-500/50 bg-emerald-950/80 px-3 py-2 text-center text-xs font-semibold text-emerald-300 shadow-md">
+          {copiedNotification}
+        </div>
+      )}
+
+      {/* Waiting Room notice */}
+      {gameState.status === 'waiting' && (
+        <section className="mb-4 rounded-xl border border-amber-500/50 bg-amber-400/10 p-4">
+          <p className="font-bold text-amber-300">{gameState.message}</p>
+          {opponentDisconnected ? (
+            <p className="mt-1 text-sm text-slate-300">
+              Waiting for opponent to reconnect (30 second grace period)...
+            </p>
+          ) : gameState.blackName ? (
+            <p className="mt-1 text-sm text-slate-300">
+              Match will resume as soon as the player reconnects.
+            </p>
+          ) : (
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <span className="text-sm text-slate-300">
+                Share room code <b className="font-mono text-base tracking-widest text-white">{gameState.roomCode}</b> on your local network.
+              </span>
+              <button
+                type="button"
+                onClick={handleShareRoom}
+                className="action-button action-secondary text-xs"
+              >
+                Copy Room Invite
+              </button>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Takeback Negotiation Banner */}
+      {gameState.takebackRequestedBy && gameState.status === 'active' && (
+        <div className="mb-4 rounded-xl border border-amber-500/60 bg-amber-400/15 p-3.5 shadow-lg animate-pulse">
+          {gameState.takebackRequestedBy === color ? (
+            <p className="font-bold text-amber-300 text-sm">
+              ⏳ You requested a takeback. Waiting for opponent to respond...
+            </p>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="font-bold text-amber-300 text-sm">
+                ⚠️ Opponent is requesting a takeback on their last move!
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleRespondTakeback(true)}
+                  className="action-button action-primary text-xs font-bold"
+                >
+                  Accept Takeback
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleRespondTakeback(false)}
+                  className="action-button action-secondary text-xs"
+                >
+                  Decline
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Draw offer banner */}
+      {gameState.drawOfferBy !== null &&
+        gameState.drawOfferBy !== color &&
+        gameState.status === 'active' && (
+          <div className="mb-4 rounded-xl border border-amber-500/50 bg-amber-500/10 p-3">
+            <p className="font-bold text-amber-300">
+              Draw offered by {gameState.drawOfferBy === 'w' ? gameState.whiteName : (gameState.blackName ?? 'Opponent')}
+            </p>
+            <div className="mt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={() => handleRespondDraw(true)}
+                className="action-button action-primary text-xs"
+              >
+                Accept Draw
+              </button>
+              <button
+                type="button"
+                onClick={() => handleRespondDraw(false)}
+                className="action-button action-secondary text-xs"
+              >
+                Decline
+              </button>
+            </div>
+          </div>
+        )}
+
+      {/* Error banner */}
+      {error && (
+        <div className="mb-4 rounded-lg bg-rose-950 px-3 py-2 text-sm text-rose-200" role="alert">
+          {error}
+        </div>
+      )}
+
+      {/* Main Grid: Board Column + Sidebar Column */}
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
+        {/* Left Column: Board & Player Panels */}
+        <section className="mx-auto w-full max-w-[46rem]">
+          {/* Top Player Card */}
+          <div className="mb-2">
+            <PlayerCard
+              name={flipped ? gameState.whiteName : opponentName}
+              color={flipped ? 'w' : 'b'}
+              isTurn={gameState.turn === (flipped ? 'w' : 'b') && gameState.status === 'active'}
+              timeMs={flipped ? gameState.whiteTimeMs : gameState.blackTimeMs}
+              capturedPieces={flipped ? capturedBlack : capturedWhite}
+              advantage={flipped ? whiteAdvantage : blackAdvantage}
+              isLocalPlayer={color === (flipped ? 'w' : 'b')}
+              isDisconnected={Boolean(opponentDisconnected && color !== (flipped ? 'w' : 'b'))}
+            />
+          </div>
+
+          {/* Status banner */}
+          <div
+            className="mb-2 flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/90 px-3 py-2 text-xs"
+            role="status"
+            aria-live="polite"
+          >
+            <div className="flex items-center gap-2 font-medium">
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  chess.isCheck()
+                    ? 'bg-rose-500 animate-ping'
+                    : gameState.status === 'active'
+                    ? 'bg-emerald-400'
+                    : 'bg-amber-400'
+                }`}
+              />
+              <span className="text-slate-200">{gameState.message}</span>
+            </div>
+            <span className="font-mono text-slate-400">Move {currentMoveNumber}</span>
+          </div>
+
+          {/* Interactive Chessboard */}
+          <Chessboard
+            chess={chess}
+            flipped={flipped}
+            selectedSquare={selectedSquare}
+            legalTargets={legalTargets}
+            lastMove={lastMove}
+            isInteractive={canMove}
+            theme={activeTheme}
+            pieceSet={preferences.pieceSet}
+            highlightStyle={preferences.highlightStyle}
+            boardSettings={preferences.boardSettings}
+            onSquareClick={handleSquareClick}
+            onPieceDrop={handlePieceDrop}
+          />
+
+          {/* Bottom Player Card */}
+          <div className="mt-2">
+            <PlayerCard
+              name={flipped ? (role === 'player' ? myName : (gameState.blackName ?? 'Black')) : opponentName}
+              color={flipped ? 'b' : 'w'}
+              isTurn={gameState.turn === (flipped ? 'b' : 'w') && gameState.status === 'active'}
+              timeMs={flipped ? gameState.blackTimeMs : gameState.whiteTimeMs}
+              capturedPieces={flipped ? capturedWhite : capturedBlack}
+              advantage={flipped ? blackAdvantage : whiteAdvantage}
+              isLocalPlayer={color === (flipped ? 'b' : 'w')}
+              isDisconnected={Boolean(
+                opponentDisconnected &&
+                  role === 'player' &&
+                  color === (flipped ? 'b' : 'w')
+              )}
+            />
+          </div>
+
+          {/* Action buttons (Takeback, Draw, Resign) */}
+          {role === 'player' && gameState.status === 'active' && (
+            <div className="mt-3 flex gap-2">
+              {gameState.allowTakebacks && (
+                <button
+                  type="button"
+                  onClick={handleRequestTakeback}
+                  disabled={Boolean(gameState.takebackRequestedBy) || gameState.moves.length === 0}
+                  className="action-button action-secondary flex-1 text-xs"
+                >
+                  Request Takeback
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleOfferDraw}
+                disabled={Boolean(gameState.drawOfferBy)}
+                className="action-button action-secondary flex-1 text-xs"
+              >
+                Offer Draw
+              </button>
+              <button
+                type="button"
+                onClick={handleResign}
+                className="action-button action-secondary flex-1 text-xs text-rose-300 hover:border-rose-800 hover:text-rose-200"
+              >
+                Resign Game
+              </button>
+            </div>
+          )}
+        </section>
+
+        {/* Right Column: Move History & Room Chat */}
+        <aside className="space-y-4">
+          <MoveHistory moves={gameState.moves} />
+          <ChatPanel
+            messages={gameState.chatMessages}
+            onSendMessage={handleSendChat}
+            currentUserName={preferences.playerName}
+            currentSessionId={getStoredSessionId()}
+          />
+        </aside>
+      </div>
+
+      {/* Pawn Promotion Modal */}
+      {pendingPromotion && color && (
+        <PromotionModal
+          color={color}
+          onSelect={(piece) => executeMove(pendingPromotion.from, pendingPromotion.to, piece)}
+          onCancel={() => setPendingPromotion(null)}
+        />
+      )}
+
+      {/* Game Over Modal */}
+      {gameState.status === 'finished' && (
+        <GameOverModal
+          winner={gameState.winner}
+          reason={gameState.reason}
+          userColor={color}
+          isSpectator={role === 'spectator'}
+          rematchRequestedByMe={Boolean(color && gameState.rematchRequests[color])}
+          rematchRequestedByOpponent={Boolean(color && gameState.rematchRequests[opponentColor])}
+          onRequestRematch={handleRequestRematch}
+          onRespondRematch={handleRespondRematch}
+          onLeaveRoom={handleLeaveRoom}
+          onReviewGame={handleOpenCurrentGameReview}
+        />
+      )}
+
+      {/* Settings Modal */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        preferences={preferences}
+        customThemes={customThemes}
+        onUpdatePreferences={handleUpdatePreferences}
+        onSaveCustomTheme={handleSaveCustomTheme}
+        onDeleteCustomTheme={handleDeleteCustomTheme}
+      />
+    </div>
+  );
+}
