@@ -19,6 +19,7 @@ import { MoveHistory } from './components/MoveHistory.js';
 import { ChatPanel } from './components/ChatPanel.js';
 import { PromotionModal } from './components/PromotionModal.js';
 import { GameOverModal } from './components/GameOverModal.js';
+import { ConfirmDialog } from './components/ConfirmDialog.js';
 import { SettingsModal } from './components/settings/SettingsModal.js';
 import { GameReview } from './components/review/GameReview.js';
 import { HistoryView } from './components/review/HistoryView.js';
@@ -134,6 +135,14 @@ export function App() {
   const [copiedNotification, setCopiedNotification] = useState<string | null>(null);
 
   const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
+  const [premove, setPremove] = useState<{ from: Square; to: Square } | null>(null);
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    title: string;
+    message: string;
+    confirmLabel: string;
+    danger?: boolean;
+    action: () => void;
+  } | null>(null);
   const [flipped, setFlipped] = useState(false);
   const [pendingPromotion, setPendingPromotion] = useState<{ from: Square; to: Square } | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
@@ -177,6 +186,58 @@ export function App() {
     gameState.status === 'active' &&
     gameState.turn === color
   );
+
+  // Premoving: queue a move while it is the opponent's turn. The move is only
+  // attempted (and only by the authoritative server) once it is actually our
+  // turn — illegal premoves are discarded silently.
+  const canPremove = Boolean(
+    gameState &&
+    role === 'player' &&
+    color &&
+    gameState.status === 'active' &&
+    !pendingPromotion &&
+    gameState.turn !== color
+  );
+
+  // A premove only survives while a game is actively waiting for the opponent;
+  // any finished/disconnected/waiting state clears it.
+  useEffect(() => {
+    if (gameState?.status !== 'active') {
+      setPremove(null);
+    }
+  }, [gameState?.status]);
+
+  // Execute the queued premove the moment it becomes our turn.
+  useEffect(() => {
+    if (!canMove || !premove) return;
+    const candidates = chess
+      .moves({ square: premove.from, verbose: true })
+      .filter((m) => m.to === premove.to);
+    // Legality is re-checked in the position that just arose: if the
+    // opponent's move invalidated the premove, it is discarded silently.
+    const chosen = candidates.find((m) => m.promotion === 'q') ?? candidates[0];
+    setPremove(null);
+    setSelectedSquare(null);
+    if (chosen) {
+      // Premove promotions auto-queen (the first listed promotion is q).
+      const promotion = chosen.promotion ? (chosen.promotion as PromotionPiece) : undefined;
+      executeMove(premove.from, premove.to, promotion);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canMove]);
+
+  // Escape cancels a queued premove (and any selection).
+  useEffect(() => {
+    if (!premove) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setPremove(null);
+        setSelectedSquare(null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [premove]);
 
   // Auto-orient board to Black's perspective when playing Black
   useEffect(() => {
@@ -239,6 +300,7 @@ export function App() {
       // moves that already happened.
       prevMovesCountRef.current = -1;
       prevStatusRef.current = 'waiting';
+      setPremove(null);
     };
 
     const onRoomJoined = (payload: { roomCode: string; playerColor: PlayerColor | null; sessionId: string; role: 'player' | 'spectator' }) => {
@@ -249,6 +311,7 @@ export function App() {
       setCurrentView('play');
       prevMovesCountRef.current = -1;
       prevStatusRef.current = 'waiting';
+      setPremove(null);
     };
 
     const onGameState = (state: GameState) => {
@@ -394,7 +457,39 @@ export function App() {
   }, [canMove, socket]);
 
   const handleSquareClick = useCallback((square: Square) => {
-    if (!gameState || gameState.status !== 'active' || !canMove || pendingPromotion) return;
+    if (!gameState || gameState.status !== 'active' || pendingPromotion) return;
+
+    if (!canMove) {
+      // Premoving: queue a move for our next turn.
+      if (!canPremove || !color) return;
+
+      // Clicking the premove target again cancels it.
+      if (premove && square === premove.to) {
+        setPremove(null);
+        setSelectedSquare(null);
+        return;
+      }
+
+      // With a piece selected, any other square (re)targets the premove.
+      if (selectedSquare && square !== selectedSquare) {
+        setPremove({ from: selectedSquare, to: square });
+        setSelectedSquare(null);
+        return;
+      }
+
+      const piece = chess.get(square);
+      if (piece && piece.color === color) {
+        // Clicking the premove origin with nothing selected cancels the premove.
+        if (premove && square === premove.from && !selectedSquare) {
+          setPremove(null);
+          return;
+        }
+        setSelectedSquare(square === selectedSquare ? null : square);
+      } else {
+        setSelectedSquare(null);
+      }
+      return;
+    }
 
     const piece = chess.get(square);
     const targetMove = legalTargets.get(square);
@@ -413,10 +508,25 @@ export function App() {
     } else {
       setSelectedSquare(null);
     }
-  }, [gameState, canMove, pendingPromotion, chess, legalTargets, selectedSquare, color, executeMove]);
+  }, [gameState, canMove, canPremove, pendingPromotion, chess, legalTargets, selectedSquare, color, executeMove, premove]);
 
   const handlePieceDrop = useCallback((from: Square, to: Square) => {
-    if (!canMove) return;
+    if (!gameState || gameState.status !== 'active' || pendingPromotion) return;
+
+    if (!canMove) {
+      // Premoving via drag: only our own pieces, dropping onto another square.
+      if (!canPremove || !color || from === to) return;
+      const dragged = chess.get(from);
+      if (!dragged || dragged.color !== color) return;
+      if (premove && premove.from === from && premove.to === to) {
+        setPremove(null); // dropping the same premove again cancels it
+      } else {
+        setPremove({ from, to });
+        setSelectedSquare(null);
+      }
+      return;
+    }
+
     const moves = chess.moves({ square: from, verbose: true });
     const targetMove = moves.find((m) => m.to === to);
     if (!targetMove) return;
@@ -426,7 +536,7 @@ export function App() {
     } else {
       executeMove(from, to);
     }
-  }, [canMove, chess, executeMove]);
+  }, [gameState, canMove, canPremove, pendingPromotion, chess, color, premove]);
 
   // Lobby actions
   const handleCreateGame = () => {
@@ -457,12 +567,17 @@ export function App() {
     });
   };
 
-  // Game actions
+  // Game actions (in-app confirm dialog: window.confirm is broken/suppressed
+  // in some browsers, e.g. Arc, which made resign/draw/takeback dead there)
   const handleResign = () => {
     if (!gameState || gameState.status !== 'active' || role !== 'player' || !color) return;
-    if (window.confirm('Are you sure you want to resign this game?')) {
-      socket.emit(SOCKET_EVENTS.RESIGN_GAME);
-    }
+    setPendingConfirm({
+      title: 'Resign Game?',
+      message: 'Your opponent will be awarded the win.',
+      confirmLabel: 'Resign',
+      danger: true,
+      action: () => socket.emit(SOCKET_EVENTS.RESIGN_GAME),
+    });
   };
 
   const handleOfferDraw = () => {
@@ -471,9 +586,12 @@ export function App() {
       setError('A draw offer is already pending.');
       return;
     }
-    if (window.confirm('Offer a draw to your opponent?')) {
-      socket.emit(SOCKET_EVENTS.OFFER_DRAW);
-    }
+    setPendingConfirm({
+      title: 'Offer Draw?',
+      message: 'Your opponent can accept or decline the offer.',
+      confirmLabel: 'Offer Draw',
+      action: () => socket.emit(SOCKET_EVENTS.OFFER_DRAW),
+    });
   };
 
   const handleRespondDraw = (accept: boolean) => {
@@ -482,9 +600,12 @@ export function App() {
 
   const handleRequestTakeback = () => {
     if (!gameState || gameState.status !== 'active' || role !== 'player' || !color) return;
-    if (window.confirm('Request a takeback from your opponent?')) {
-      socket.emit(SOCKET_EVENTS.REQUEST_TAKEBACK);
-    }
+    setPendingConfirm({
+      title: 'Request Takeback?',
+      message: 'Your opponent can accept or decline your takeback request.',
+      confirmLabel: 'Request Takeback',
+      action: () => socket.emit(SOCKET_EVENTS.REQUEST_TAKEBACK),
+    });
   };
 
   const handleRespondTakeback = (accept: boolean) => {
@@ -507,6 +628,7 @@ export function App() {
     setPendingPromotion(null);
     setError(null);
     setCurrentView('play');
+    setPremove(null);
     prevMovesCountRef.current = 0;
     prevStatusRef.current = 'waiting';
   };
@@ -945,7 +1067,8 @@ export function App() {
             selectedSquare={selectedSquare}
             legalTargets={legalTargets}
             lastMove={lastMove}
-            isInteractive={canMove}
+            isInteractive={canMove || canPremove}
+            premove={premove}
             theme={activeTheme}
             pieceSet={preferences.pieceSet}
             highlightStyle={preferences.highlightStyle}
@@ -1022,6 +1145,20 @@ export function App() {
           color={color}
           onSelect={(piece) => executeMove(pendingPromotion.from, pendingPromotion.to, piece)}
           onCancel={() => setPendingPromotion(null)}
+        />
+      )}
+
+      {pendingConfirm && (
+        <ConfirmDialog
+          title={pendingConfirm.title}
+          message={pendingConfirm.message}
+          confirmLabel={pendingConfirm.confirmLabel}
+          danger={pendingConfirm.danger}
+          onConfirm={() => {
+            pendingConfirm.action();
+            setPendingConfirm(null);
+          }}
+          onCancel={() => setPendingConfirm(null)}
         />
       )}
 

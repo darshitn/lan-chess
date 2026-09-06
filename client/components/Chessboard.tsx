@@ -31,6 +31,7 @@ interface ChessboardProps {
   legalTargets: Map<Square, Move>;
   lastMove: GameMove | null;
   isInteractive: boolean;
+  premove?: { from: Square; to: Square } | null;
   theme?: BoardTheme;
   pieceSet?: PieceSetId;
   highlightStyle?: HighlightStyleId;
@@ -46,6 +47,7 @@ export const Chessboard: React.FC<ChessboardProps> = React.memo(({
   legalTargets,
   lastMove,
   isInteractive,
+  premove = null,
   theme,
   pieceSet = 'classic',
   highlightStyle = 'classic',
@@ -212,6 +214,8 @@ export const Chessboard: React.FC<ChessboardProps> = React.memo(({
               const targetMove = legalTargets.get(square);
               const isLastMove = lastMove?.from === square || lastMove?.to === square;
               const isSelected = selectedSquare === square;
+              const isPremove = Boolean(premove && (premove.from === square || premove.to === square));
+              const isPremoveDestination = Boolean(premove && premove.to === square);
               const isLight = isLightSquare(file, rank);
               const isKingInCheck = isChecked && piece?.type === 'k' && piece.color === currentTurn;
 
@@ -222,6 +226,7 @@ export const Chessboard: React.FC<ChessboardProps> = React.memo(({
                 isSelected ? 'selected' : '',
                 targetMove ? 'legal move target' : '',
                 isLastMove ? 'last move' : '',
+                isPremove ? (isPremoveDestination ? 'premove target' : 'premove origin') : '',
               ]
                 .filter(Boolean)
                 .join(', ');
@@ -253,7 +258,9 @@ export const Chessboard: React.FC<ChessboardProps> = React.memo(({
                     isLight ? 'square-light' : 'square-dark'
                   } ${isSelected ? 'selected-square' : ''} ${
                     isLastMove ? 'last-move' : ''
-                  } ${isKingInCheck ? 'checked-king' : ''}`}
+                  } ${isKingInCheck ? 'checked-king' : ''} ${
+                    isPremove ? 'premove-square' : ''
+                  } ${isPremoveDestination ? 'premove-destination' : ''}`}
                 >
                   {/* Coordinates notation */}
                   {showCoords && colIndex === 0 && (

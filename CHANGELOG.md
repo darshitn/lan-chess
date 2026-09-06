@@ -4,6 +4,12 @@ All notable changes to LAN Chess are documented here.
 
 ## [0.2.0] — 2026-09-06
 
+### Added
+- **Premoves**: queue a move while the opponent is thinking (click or drag; cyan ring marks origin/target). It auto-plays the instant your turn arrives if still legal, is discarded silently if the position changed made it illegal, and can be cancelled (click the target or origin again, press Escape, or queue a different premove). Premove promotions auto-queen. The server still validates every executed premove.
+
+### Fixed
+- **Resign / draw / takeback now work in every browser** (e.g. Arc, where native `window.confirm` is suppressed and silently blocked these actions). They use an in-app confirmation dialog with Escape-to-cancel and Cancel focused first.
+
 ### Fixed — multiplayer correctness (server-authoritative)
 - **Abandonment race:** the reconnect grace timer no longer overwrites a result recorded during the grace window (previously, resigning while the opponent was disconnected could flip the winner 30 seconds later).
 - **Leaving an active game is now a forfeit:** the remaining player is awarded the win and the seat can never be refilled into a "zombie" game with a running clock.
