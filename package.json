@@ -12,6 +12,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build:server": "tsc -p tsconfig.server.json",
     "test": "vitest run",
+    "build:puzzles": "node scripts/generate-puzzles.mjs",
     "start": "node dist/server/server/index.js"
   },
   "dependencies": {

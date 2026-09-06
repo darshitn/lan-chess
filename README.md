@@ -18,7 +18,7 @@ LAN Chess is a local-network multiplayer chess game built with React, Vite, Expr
 - Post-game review with replay controls, keyboard navigation, and evaluation graph
 - Stockfish analysis: per-move best move, centipawn loss, classification (brilliant → blunder), accuracy estimates, genuine openings-table "book" detection
 - Practice sandbox with position setup and live engine evaluation
-- Puzzle trainer and local player statistics
+- Puzzle trainer with 1,300+ rated tactical puzzles (Lichess CC0 database, bundled offline) and local player statistics
 - Board themes, piece sets, highlight styles, UI themes, custom board builder — all persisted locally and never affecting game state
 
 ## Tech Stack

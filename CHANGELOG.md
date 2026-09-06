@@ -5,6 +5,7 @@ All notable changes to LAN Chess are documented here.
 ## [0.2.0] — 2026-09-06
 
 ### Added
+- **1,320-puzzle tactics library** (from the Lichess open puzzle database, CC0): chess.js-validated slice filtered by rating (900–1900), popularity, and clean solutions; difficulty filters (Easy ≤1200 / Medium / Hard 1600+), per-puzzle rating and theme badges, and true multi-move tactics with the opponent's replies auto-played. Falls back to the built-in warm-up set offline. Regenerate with `npm run build:puzzles`.
 - **Premoves**: queue a move while the opponent is thinking (click or drag; cyan ring marks origin/target). It auto-plays the instant your turn arrives if still legal, is discarded silently if the position changed made it illegal, and can be cancelled (click the target or origin again, press Escape, or queue a different premove). Premove promotions auto-queen. The server still validates every executed premove.
 
 ### Fixed
