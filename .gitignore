@@ -6,3 +6,8 @@ dist/
 *.log
 .DS_Store
 .puzzle-build/
+
+# local working docs (not published)
+ROAD_MAP.md
+questions.md
+ENGINEERING_REPORT.md

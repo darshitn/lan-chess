@@ -99,4 +99,4 @@ Covers server game-lifecycle integrity (abandonment, forfeits, clock accounting 
 
 - All multiplayer state is in-memory: a server restart clears active rooms.
 - Analysis evals come from the bundled 2019 Stockfish build; opening-phase evals at low depth can be noisy (mitigated by genuine book detection).
-- Player identity is a localStorage session id over plaintext WS — appropriate for a trusted home/college LAN (see `questions.md`).
+- Player identity is a localStorage session id over plaintext WS — appropriate for a trusted home/college LAN.
