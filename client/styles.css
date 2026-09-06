@@ -12,6 +12,32 @@
   --text-muted: #94a3b8;
   --accent-color: #fbbf24;
   --accent-hover: #fcd34d;
+
+  /* Design tokens consumed by the utility override layer below.
+     "Dark Slate" defaults; every UI theme only redefines these. */
+  --surface-deep: #020617;      /* bg-slate-950[-/x] */
+  --surface-main: #0f172a;      /* bg-slate-900[-/x] */
+  --surface-raised: #1e293b;    /* bg-slate-800[-/x] */
+  --border-faint: #1e293b;      /* border-slate-800[-/x] */
+  --border-soft: #334155;       /* border-slate-700[-/x] */
+  --text-hi: #ffffff;           /* text-white */
+  --text-strong: #e2e8f0;       /* text-slate-200 */
+  --text-body: #cbd5e1;         /* text-slate-300 */
+  --text-muted-2: #94a3b8;      /* text-slate-400 */
+  --text-faint: #64748b;        /* text-slate-500 */
+  --text-dim: #475569;          /* text-slate-600 */
+  --hover-raised: #334155;      /* hover:bg-slate-700/800 */
+  --hover-border: #475569;      /* hover:border-slate-600/700 */
+  --inset-bg: rgba(0, 0, 0, 0.35);      /* .field, .chat-message */
+  --hover-soft: rgba(255, 255, 255, 0.04);
+  --hover-strong: rgba(255, 255, 255, 0.08);
+  --accent-text: #fbbf24;       /* text-amber-300/400 */
+  --accent-text-soft: #fde68a;  /* text-amber-200[/90] */
+  --accent-border: #fbbf24;     /* border-amber-400[/x] */
+  --accent-soft-bg: rgba(251, 191, 36, 0.10);  /* bg-amber-400/10 */
+  --accent-soft-bg-2: rgba(251, 191, 36, 0.20); /* bg-amber-400/20 */
+  --accent-soft-border: rgba(251, 191, 36, 0.6);
+
   color: var(--text-main);
   background: var(--bg-primary);
 }
@@ -26,34 +52,29 @@ html.theme-light {
   --text-muted: #64748b;
   --accent-color: #d97706;
   --accent-hover: #b45309;
+  --surface-deep: #f8fafc;
+  --surface-main: #ffffff;
+  --surface-raised: #e2e8f0;
+  --border-faint: #e2e8f0;
+  --border-soft: #cbd5e1;
+  --text-hi: #0f172a;
+  --text-strong: #1e293b;
+  --text-body: #334155;
+  --text-muted-2: #475569;
+  --text-faint: #64748b;
+  --text-dim: #475569;
+  --hover-raised: #cbd5e1;
+  --hover-border: #94a3b8;
+  --inset-bg: rgba(15, 23, 42, 0.06);
+  --hover-soft: rgba(15, 23, 42, 0.05);
+  --hover-strong: rgba(15, 23, 42, 0.10);
+  --accent-text: #b45309;
+  --accent-text-soft: #92400e;
+  --accent-border: #d97706;
+  --accent-soft-bg: rgba(217, 119, 6, 0.12);
+  --accent-soft-bg-2: rgba(217, 119, 6, 0.20);
+  --accent-soft-border: rgba(217, 119, 6, 0.55);
 }
-/* Light theme: dark-theme utility text colors are remapped inside panels so
-   text stays readable on white surfaces (WCAG AA). */
-html.theme-light .panel .text-slate-200,
-html.theme-light .panel .text-slate-300,
-html.theme-light .panel .text-white { color: #1e293b; }
-html.theme-light .panel .text-slate-400 { color: #475569; }
-html.theme-light .panel .text-slate-500 { color: #64748b; }
-html.theme-light .panel .text-amber-300,
-html.theme-light .panel .text-amber-400 { color: #b45309; }
-html.theme-light .panel .text-emerald-300,
-html.theme-light .panel .text-emerald-400 { color: #047857; }
-html.theme-light .panel .text-teal-300,
-html.theme-light .panel .text-teal-400 { color: #0f766e; }
-html.theme-light .panel .text-sky-300,
-html.theme-light .panel .text-sky-400,
-html.theme-light .panel .text-blue-300,
-html.theme-light .panel .text-blue-400 { color: #1d4ed8; }
-html.theme-light .panel .text-yellow-300,
-html.theme-light .panel .text-yellow-400 { color: #a16207; }
-html.theme-light .panel .text-rose-300,
-html.theme-light .panel .text-rose-400,
-html.theme-light .panel .text-rose-500 { color: #be123c; }
-html.theme-light .panel .text-orange-300,
-html.theme-light .panel .text-orange-400 { color: #c2410c; }
-html.theme-light .panel .text-violet-300,
-html.theme-light .panel .text-violet-400 { color: #6d28d9; }
-
 html.theme-midnight {
   --bg-primary: #090d16;
   --bg-gradient: radial-gradient(circle at top, #1e1b4b 0%, #090d16 50%, #020617 100%);
@@ -63,6 +84,26 @@ html.theme-midnight {
   --text-muted: #94a3b8;
   --accent-color: #38bdf8;
   --accent-hover: #7dd3fc;
+  --surface-deep: #0b1024;
+  --surface-main: #101838;
+  --surface-raised: #1b2650;
+  --border-faint: #222d5c;
+  --border-soft: #33407e;
+  --text-hi: #f1f5ff;
+  --text-strong: #dde5fb;
+  --text-body: #b9c4ef;
+  --text-muted-2: #8c9ad6;
+  --text-faint: #6774a8;
+  --text-dim: #515c8c;
+  --hover-raised: #33407e;
+  --hover-border: #5566b8;
+  --inset-bg: rgba(0, 0, 20, 0.4);
+  --accent-text: #7dd3fc;
+  --accent-text-soft: #bae6fd;
+  --accent-border: #38bdf8;
+  --accent-soft-bg: rgba(56, 189, 248, 0.12);
+  --accent-soft-bg-2: rgba(56, 189, 248, 0.20);
+  --accent-soft-border: rgba(56, 189, 248, 0.55);
 }
 html.theme-oled {
   --bg-primary: #000000;
@@ -73,16 +114,58 @@ html.theme-oled {
   --text-muted: #a3a3a3;
   --accent-color: #e5e5e5;
   --accent-hover: #ffffff;
+  --surface-deep: #000000;
+  --surface-main: #0a0a0a;
+  --surface-raised: #171717;
+  --border-faint: #202020;
+  --border-soft: #333333;
+  --text-hi: #fafafa;
+  --text-strong: #e5e5e5;
+  --text-body: #d4d4d4;
+  --text-muted-2: #a3a3a3;
+  --text-faint: #737373;
+  --text-dim: #525252;
+  --hover-raised: #2e2e2e;
+  --hover-border: #525252;
+  --inset-bg: rgba(0, 0, 0, 0.6);
+  --accent-text: #fafafa;
+  --accent-text-soft: #e5e5e5;
+  --accent-border: #e5e5e5;
+  --accent-soft-bg: rgba(255, 255, 255, 0.08);
+  --accent-soft-bg-2: rgba(255, 255, 255, 0.16);
+  --accent-soft-border: rgba(255, 255, 255, 0.5);
 }
 html.theme-glass {
   --bg-primary: #030712;
   --bg-gradient: radial-gradient(circle at top, #1f2937 0%, #111827 50%, #030712 100%);
-  --panel-bg: rgba(17, 24, 39, 0.7);
-  --panel-border: rgba(255, 255, 255, 0.12);
+  --panel-bg: rgba(17, 24, 39, 0.6);
+  --panel-border: rgba(255, 255, 255, 0.14);
   --text-main: #f9fafb;
   --text-muted: #9ca3af;
-  --accent-color: #a855f7;
-  --accent-hover: #c084fc;
+  --accent-color: #fbbf24;
+  --accent-hover: #fcd34d;
+  --surface-deep: rgba(15, 23, 42, 0.55);
+  --surface-main: rgba(30, 41, 59, 0.5);
+  --surface-raised: rgba(71, 85, 105, 0.4);
+  --border-faint: rgba(255, 255, 255, 0.12);
+  --border-soft: rgba(255, 255, 255, 0.22);
+  --text-hi: #f8fafc;
+  --text-strong: #e2e8f0;
+  --text-body: #cbd5e1;
+  --text-muted-2: #94a3b8;
+  --text-faint: #64748b;
+  --text-dim: #475569;
+  --hover-raised: rgba(148, 163, 184, 0.25);
+  --hover-border: rgba(255, 255, 255, 0.35);
+  --inset-bg: rgba(255, 255, 255, 0.06);
+  --hover-soft: rgba(255, 255, 255, 0.06);
+  --hover-strong: rgba(255, 255, 255, 0.12);
+  --accent-text: #fbbf24;
+  --accent-text-soft: #fde68a;
+  --accent-border: #fbbf24;
+  --accent-soft-bg: rgba(251, 191, 36, 0.10);
+  --accent-soft-bg-2: rgba(251, 191, 36, 0.20);
+  --accent-soft-border: rgba(251, 191, 36, 0.6);
 }
 html.theme-cyber {
   --bg-primary: #050508;
@@ -93,7 +176,92 @@ html.theme-cyber {
   --text-muted: #7dd3fc;
   --accent-color: #00f0ff;
   --accent-hover: #38bdf8;
+  --surface-deep: #0a0a14;
+  --surface-main: #100f22;
+  --surface-raised: #1d1b38;
+  --border-faint: #2a1b4e;
+  --border-soft: #3d2f68;
+  --text-hi: #e0f2fe;
+  --text-strong: #c3e4ff;
+  --text-body: #93b8e8;
+  --text-muted-2: #6488b8;
+  --text-faint: #4a6a94;
+  --text-dim: #3d5880;
+  --hover-raised: #24204a;
+  --hover-border: #6f5bb5;
+  --inset-bg: rgba(0, 0, 30, 0.5);
+  --accent-text: #22d3ee;
+  --accent-text-soft: #a5f3fc;
+  --accent-border: #22d3ee;
+  --accent-soft-bg: rgba(34, 211, 238, 0.10);
+  --accent-soft-bg-2: rgba(34, 211, 238, 0.18);
+  --accent-soft-border: rgba(34, 211, 238, 0.45);
 }
+
+/* Frosted Glass: real translucency on raised surfaces */
+html.theme-glass .panel,
+html.theme-glass .promotion-dialog,
+html.theme-glass .field,
+html.theme-glass .chat-message {
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+}
+
+/*
+ * Utility override layer: components use Tailwind color utilities directly
+ * (bg-slate-900, text-white, border-slate-800, ...), so the theme tokens are
+ * mapped onto those exact class names. This is the only place that needs to
+ * change to restyle every screen; components stay untouched.
+ */
+.text-white { color: var(--text-hi); }
+.text-slate-200 { color: var(--text-strong); }
+.text-slate-300 { color: var(--text-body); }
+.text-slate-400 { color: var(--text-muted-2); }
+.text-slate-500 { color: var(--text-faint); }
+.text-slate-600 { color: var(--text-dim); }
+
+.bg-slate-950,
+.bg-slate-950\/40,
+.bg-slate-950\/60,
+.bg-slate-950\/70,
+.bg-slate-950\/80 { background-color: var(--surface-deep); }
+.bg-slate-900,
+.bg-slate-900\/60,
+.bg-slate-900\/80,
+.bg-slate-900\/90 { background-color: var(--surface-main); }
+.bg-slate-800,
+.bg-slate-800\/60,
+.bg-slate-800\/80,
+.bg-slate-800\/90 { background-color: var(--surface-raised); }
+
+.border-slate-800,
+.border-slate-800\/80,
+.border-slate-800\/60 { border-color: var(--border-faint); }
+.border-slate-700,
+.border-slate-700\/60 { border-color: var(--border-soft); }
+
+.hover\:bg-slate-800:hover,
+.hover\:bg-slate-800\/80:hover,
+.hover\:bg-slate-700:hover { background-color: var(--hover-raised); }
+.hover\:border-slate-700:hover,
+.hover\:border-slate-600:hover { border-color: var(--hover-border); }
+.hover\:text-slate-200:hover { color: var(--text-strong); }
+.hover\:text-slate-400:hover { color: var(--text-muted-2); }
+.hover\:text-white:hover { color: var(--text-hi); }
+
+/* Accent utilities follow each theme's accent color */
+.text-amber-200,
+.text-amber-200\/90 { color: var(--accent-text-soft); }
+.text-amber-300,
+.text-amber-300\/90,
+.text-amber-400 { color: var(--accent-text); }
+.border-amber-400,
+.border-amber-400\/80,
+.border-amber-400\/50,
+.border-amber-400\/30 { border-color: var(--accent-border); }
+.bg-amber-400\/10 { background-color: var(--accent-soft-bg); }
+.bg-amber-400\/20 { background-color: var(--accent-soft-bg-2); }
+.bg-amber-400 { background-color: var(--accent-color); }
 
 body {
   background: var(--bg-gradient);
@@ -273,11 +441,11 @@ button:hover:not(:disabled) { transform: translateY(-1px); }
 .action-secondary {
   border: 1px solid var(--panel-border);
   color: var(--text-main);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--hover-soft);
 }
 .action-secondary:hover:not(:disabled) {
   border-color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--hover-strong);
 }
 
 .captured-pieces {
@@ -309,7 +477,7 @@ button:hover:not(:disabled) { transform: translateY(-1px); }
   border-radius: .35rem;
 }
 .move-list li:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--hover-soft);
 }
 .move-cell {
   padding: 0.15rem 0.35rem;
@@ -318,8 +486,8 @@ button:hover:not(:disabled) { transform: translateY(-1px); }
   transition: background 120ms ease;
 }
 .move-cell:hover {
-  background: rgba(251, 191, 36, 0.15);
-  color: var(--accent-color);
+  background: var(--accent-soft-bg-2);
+  color: var(--accent-text);
 }
 .move-cell.active-move {
   background: var(--accent-color);
@@ -339,12 +507,12 @@ button:hover:not(:disabled) { transform: translateY(-1px); }
 .chat-message {
   border-radius: .75rem;
   border: 1px solid var(--panel-border);
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--inset-bg);
   padding: .5rem .7rem;
 }
 .chat-self {
-  border-color: rgba(251, 191, 36, 0.6);
-  background: rgba(251, 191, 36, 0.1);
+  border-color: var(--accent-soft-border);
+  background: var(--accent-soft-bg);
 }
 .chat-meta {
   display: flex;
@@ -370,7 +538,7 @@ button:hover:not(:disabled) { transform: translateY(-1px); }
   margin-top: .45rem;
   border: 1px solid var(--panel-border);
   border-radius: .6rem;
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--inset-bg);
   padding: .65rem .8rem;
   color: var(--text-main);
 }
@@ -419,7 +587,7 @@ button:hover:not(:disabled) { transform: translateY(-1px); }
 }
 .promotion-choice:hover {
   border-color: var(--accent-color);
-  background: rgba(251, 191, 36, 0.15);
+  background: var(--accent-soft-bg-2);
 }
 
 /* Evaluation Bar */

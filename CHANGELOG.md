@@ -42,6 +42,7 @@ All notable changes to LAN Chess are documented here.
 - Modals (Settings, Position Setup, Game Over) now manage focus: Escape to close (where appropriate), focus trap, focus return.
 
 ### Improved
+- **Application UI themes now actually restyle the app.** All six themes (Dark Slate, Clean Light, Midnight Blue, OLED Black, Frosted Glass, Cyber Neon) drive a design-token layer that remaps the app's surfaces, borders, text, and accent colors; Frosted Glass adds real backdrop blur and Cyber Neon switches accents to cyan. Previously only the page background and panel fill changed.
 - Light UI theme keeps readable contrast inside panels (dark-theme text utilities remapped to dark-on-white equivalents).
 - Dependency versions pinned to concrete semver ranges (was `latest` everywhere); `package-lock.json` regenerated and `npm audit` clean (0 vulnerabilities).
 - Drag-and-drop only accepts this board's squares and is gated on interactivity; right-click arrow drawing no longer leaves stale anchors.
