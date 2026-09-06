@@ -7,19 +7,31 @@ LAN Chess is a local-network multiplayer chess game built with React, Vite, Expr
 ### Play
 - Real-time LAN multiplayer (rooms, room codes, LAN URL sharing)
 - Server-authoritative rules, turns, clocks, and results — the client never decides game state
-- Time controls: unlimited, 3+0, 5+0, 10+0, 15+10
-- Resign, draw offers, takebacks (server-mediated), rematch with color swap
+- 10 time controls grouped by speed with **Fischer increments** (server-credited per move):
+  - 🔥 Bullet: 1+0, 1+1, 2+1
+  - ⚡ Blitz: 3+0, 3+2, 5+0
+  - ⏱️ Rapid: 10+0, 10+5, 15+10
+  - ∞ Casual: no clock
+  - A "Recent" row remembers your last three presets
+- **How the clocks work** (all server-side):
+  - Base time counts down only while it is your turn; the increment is credited by the server immediately after each of your completed moves
+  - Clocks pause while any player is disconnected, and offline time is never charged
+  - The server decides flag-falls (running out of time) and awards the win — clients cannot affect the clock
+  - Low-time formatting and per-second updates are broadcast from the server
+- **Premoves**: queue a move while the opponent thinks (cyan ring markers); it auto-plays if still legal when your turn arrives, is discarded if made illegal, and can be cancelled (click target/origin again or Escape). Promotions auto-queen.
+- Resign, draw offers, takebacks (server-mediated), rematch with color swap — all behind in-app confirmation dialogs that work in every browser
 - Spectator mode (view + chat only; enforced server-side)
 - Reconnection-safe sessions (30 s grace period, abandonment resolution)
-- Room chat with sanitization and rate limiting
+- Room chat with sanitization, rate limiting, and session-based identity
 
 ### Review & train (all offline, client-side)
-- Game history (last 50 games) with automatic saving and PGN/FEN tools
+- Game history (last 50 games) with automatic saving and PGN/FEN tools (real PGN headers: players, result, termination)
 - Post-game review with replay controls, keyboard navigation, and evaluation graph
-- Stockfish analysis: per-move best move, centipawn loss, classification (brilliant → blunder), accuracy estimates, genuine openings-table "book" detection
+- Stockfish analysis: per-move best move, centipawn loss, classification (brilliant → blunder), accuracy estimates, genuine openings-table "book" detection; engine failures are shown honestly, never masked
 - Practice sandbox with position setup and live engine evaluation
-- Puzzle trainer with 1,300+ rated tactical puzzles (Lichess CC0 database, bundled offline) and local player statistics
-- Board themes, piece sets, highlight styles, UI themes, custom board builder — all persisted locally and never affecting game state
+- Puzzle trainer with **1,320 rated tactical puzzles** (Lichess CC0 database, bundled and validated offline), difficulty filters, and multi-move tactics where the opponent's replies play out
+- **19 board themes** (13 free + 6 locked previews — including the gray "Stone" board), 8 piece sets, 5 highlight styles, **6 UI themes** (Dark Slate, Clean Light, Midnight Blue, OLED Black, Frosted Glass, Cyber Neon — full design-token restyling), custom board builder — all persisted locally and never affecting game state
+- Local player statistics (win rate, openings, records)
 
 ## Tech Stack
 
@@ -27,7 +39,7 @@ LAN Chess is a local-network multiplayer chess game built with React, Vite, Expr
 - **Backend:** Node.js + Express + Socket.IO (in-memory authoritative state)
 - **Rules engine:** chess.js (validated on both sides; the server is authoritative)
 - **Engine:** Stockfish (WASM build from `stockfish.js`) in a Web Worker with a strict search lifecycle
-- **Tests:** Vitest (90 tests across server and client logic)
+- **Tests:** Vitest (94 tests across server and client logic)
 
 ## Architecture
 
@@ -65,6 +77,7 @@ The server prints the LAN URL (e.g. `http://192.168.1.25:3001`) — share it wit
 | `npm test` | Vitest test suite |
 | `npm run typecheck` | `tsc --noEmit` over the whole project |
 | `npm run build` | Typecheck, then client + server production build |
+| `npm run build:puzzles` | Regenerate the bundled puzzle library from a Lichess puzzle database dump (see `scripts/generate-puzzles.mjs`) |
 | `npm start` | Serve the production build |
 
 ## Testing
@@ -73,7 +86,7 @@ The server prints the LAN URL (e.g. `http://192.168.1.25:3001`) — share it wit
 npm test
 ```
 
-Covers server game-lifecycle integrity (abandonment, forfeits, clock accounting, timeouts, takebacks, spectator limits, room caps), input validation, chess helpers, openings/book detection, statistics, persistence corruption handling, and the Stockfish pipeline (search lifecycle, score parsing, perspective normalization, cancellation, stale-output immunity, FEN replay, best-move failure handling) via a scripted fake UCI worker.
+Covers server game-lifecycle integrity (abandonment, forfeits, clock accounting incl. Fischer increments, timeouts, takebacks, spectator limits, room caps, time-control normalization), input validation, chess helpers, openings/book detection, statistics, persistence corruption handling, and the Stockfish pipeline (search lifecycle, score parsing, perspective normalization, cancellation, stale-output immunity, FEN replay, best-move failure handling) via a scripted fake UCI worker.
 
 ## Troubleshooting
 
