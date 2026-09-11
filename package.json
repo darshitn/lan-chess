@@ -1,7 +1,7 @@
 {
   "name": "lan-chess",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n server,client -c blue,magenta \"npm run dev:server\" \"npm run dev:client\"",

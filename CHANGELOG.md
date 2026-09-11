@@ -2,6 +2,28 @@
 
 All notable changes to LAN Chess are documented here.
 
+## [1.0.0] — 2026-09-06
+
+First stable release.
+
+### Multiplayer
+- LAN play with rooms, spectators, chat (session identity), reconnection grace, server-authoritative rules/clocks/results
+- 10 time controls grouped by speed with server-credited Fischer increments and remembered presets
+- Takebacks, draw offers, resignations, and rematches (color swap) via in-app confirmation dialogs that work in every browser
+- Premoves with cancel and legality re-checked at execution time
+
+### Analysis & training
+- Stockfish WASM game review: per-move best move, centipawn loss, classifications, accuracy, genuine book detection, honest failure states
+- 1,320-puzzle rated tactics library (Lichess CC0) with difficulty filters and multi-move auto-replies
+- Practice sandbox with live engine evaluation
+
+### Platform
+- 19 board themes, 8 piece sets, 5 highlight styles, 6 full UI themes, custom board builder — persisted locally
+- Game history with real PGN headers; player statistics
+- Accessibility: keyboard-navigable board, focus-managed modals, live-region announcements
+- Server integrity: forfeit-on-leave, abandonment guards, reconnect clock accounting, flood limits, room caps
+- 94 automated tests; typecheck-gated production build; dependency versions pinned
+
 ## [0.2.0] — 2026-09-06
 
 ### Added
