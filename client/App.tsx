@@ -838,6 +838,11 @@ export function App() {
   // Active match data calculation
   const { capturedWhite, capturedBlack, whiteAdvantage, blackAdvantage } = capturedSummary;
 
+  // Each card describes one board seat (never "local vs opponent"), so names
+  // are correct for White players, Black players, and spectators alike.
+  const topSeat: PlayerColor = flipped ? 'w' : 'b';
+  const bottomSeat: PlayerColor = flipped ? 'b' : 'w';
+
   const opponentColor: PlayerColor = color === 'b' ? 'w' : 'b';
   const opponentName = opponentColor === 'w' ? gameState.whiteName : (gameState.blackName ?? 'Waiting for opponent...');
   const myName = color === 'w' ? gameState.whiteName : (gameState.blackName ?? preferences.playerName);
@@ -1038,14 +1043,14 @@ export function App() {
           {/* Top Player Card */}
           <div className="mb-2">
             <PlayerCard
-              name={flipped ? gameState.whiteName : opponentName}
-              color={flipped ? 'w' : 'b'}
-              isTurn={gameState.turn === (flipped ? 'w' : 'b') && gameState.status === 'active'}
-              timeMs={flipped ? gameState.whiteTimeMs : gameState.blackTimeMs}
-              capturedPieces={flipped ? capturedBlack : capturedWhite}
-              advantage={flipped ? whiteAdvantage : blackAdvantage}
-              isLocalPlayer={color === (flipped ? 'w' : 'b')}
-              isDisconnected={Boolean(opponentDisconnected && color !== (flipped ? 'w' : 'b'))}
+              name={topSeat === 'w' ? gameState.whiteName : (gameState.blackName ?? 'Black')}
+              color={topSeat}
+              isTurn={gameState.turn === topSeat && gameState.status === 'active'}
+              timeMs={topSeat === 'w' ? gameState.whiteTimeMs : gameState.blackTimeMs}
+              capturedPieces={topSeat === 'w' ? capturedWhite : capturedBlack}
+              advantage={topSeat === 'w' ? whiteAdvantage : blackAdvantage}
+              isLocalPlayer={role === 'player' && color === topSeat}
+              isDisconnected={Boolean(opponentDisconnected && role === 'player' && color !== topSeat)}
             />
           </div>
 
@@ -1090,17 +1095,17 @@ export function App() {
           {/* Bottom Player Card */}
           <div className="mt-2">
             <PlayerCard
-              name={flipped ? (role === 'player' ? myName : (gameState.blackName ?? 'Black')) : opponentName}
-              color={flipped ? 'b' : 'w'}
-              isTurn={gameState.turn === (flipped ? 'b' : 'w') && gameState.status === 'active'}
-              timeMs={flipped ? gameState.blackTimeMs : gameState.whiteTimeMs}
-              capturedPieces={flipped ? capturedWhite : capturedBlack}
-              advantage={flipped ? blackAdvantage : whiteAdvantage}
-              isLocalPlayer={color === (flipped ? 'b' : 'w')}
+              name={bottomSeat === 'w' ? gameState.whiteName : (gameState.blackName ?? 'Black')}
+              color={bottomSeat}
+              isTurn={gameState.turn === bottomSeat && gameState.status === 'active'}
+              timeMs={bottomSeat === 'w' ? gameState.whiteTimeMs : gameState.blackTimeMs}
+              capturedPieces={bottomSeat === 'w' ? capturedWhite : capturedBlack}
+              advantage={bottomSeat === 'w' ? whiteAdvantage : blackAdvantage}
+              isLocalPlayer={role === 'player' && color === bottomSeat}
               isDisconnected={Boolean(
                 opponentDisconnected &&
                   role === 'player' &&
-                  color === (flipped ? 'b' : 'w')
+                  color !== bottomSeat
               )}
             />
           </div>

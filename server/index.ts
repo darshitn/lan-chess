@@ -560,11 +560,25 @@ app.get('/api/status', (_request, response) => {
   } satisfies ServerStatus);
 });
 
-// Resolve client production and dev directories
+// Resolve the server's own directory. Direct ESM execution provides
+// import.meta.url; esbuild CJS bundles (desktop packaging) void it, in which
+// case the static-client candidate relative to cwd is used instead.
+const serverDir = (() => {
+  try {
+    return path.dirname(fileURLToPath(import.meta.url));
+  } catch {
+    return process.cwd();
+  }
+})();
+
+// Resolve client production and dev directories. Cwd-based candidates come
+// first: `npm start` runs from the repo root (dist/client), and the bundled
+// desktop server runs from its staging directory (client/) — the legacy
+// source-relative candidate is only a last-resort fallback.
 const clientCandidates = [
-  path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../client'),
   path.resolve(process.cwd(), 'dist/client'),
   path.resolve(process.cwd(), 'client'),
+  path.resolve(serverDir, '../../client'),
 ];
 const clientDirectory = clientCandidates.find((candidate) => existsSync(candidate));
 if (clientDirectory) {
