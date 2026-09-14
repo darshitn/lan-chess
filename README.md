@@ -39,12 +39,12 @@ LAN Chess is a local-network multiplayer chess game built with React, Vite, Expr
 - **Backend:** Node.js + Express + Socket.IO (in-memory authoritative state)
 - **Rules engine:** chess.js (validated on both sides; the server is authoritative)
 - **Engine:** Stockfish (WASM build from `stockfish.js`) in a Web Worker with a strict search lifecycle
-- **Tests:** Vitest (94 tests across server and client logic)
+- **Tests:** Vitest (112 tests across server, client, and desktop security logic)
 
 ## Architecture
 
 ```text
-Browser (React client)
+Browser / Desktop App (React client)
   ├─ Socket.IO ⇄ Node.js server (authoritative: rooms, moves, clocks, results)
   │                 └─ chess.js re-validation of every move
   ├─ Stockfish WASM worker (game review & sandbox — never touches server state)
@@ -55,13 +55,13 @@ The server keeps all multiplayer state in memory and validates every action (ide
 
 ## Running
 
+### Web Development
 ```bash
 npm install
 npm run dev          # dev server (Vite on :5173, API/WS proxied to :3001)
 ```
 
-Production:
-
+### Web Production
 ```bash
 npm run build        # typecheck + client bundle + server compile
 npm start            # serves the built app on http://0.0.0.0:3001
@@ -69,14 +69,24 @@ npm start            # serves the built app on http://0.0.0.0:3001
 
 The server prints the LAN URL (e.g. `http://192.168.1.25:3001`) — share it with anyone on the same network. Players can also join with the 4-character room code at any instance's URL.
 
+### Desktop Application (Windows)
+```bash
+npm run electron:dev     # build and launch the Electron desktop shell
+npm run electron:build   # build and generate the Windows NSIS installer
+```
+For detailed desktop architecture, see [DESKTOP_APP.md](DESKTOP_APP.md).
+
 ## Scripts
 
 | Script | What it does |
 | --- | --- |
 | `npm run dev` | Concurrent dev server + client with hot reload |
-| `npm test` | Vitest test suite |
+| `npm test` | Vitest test suite (112 tests across 10 test files) |
 | `npm run typecheck` | `tsc --noEmit` over the whole project |
 | `npm run build` | Typecheck, then client + server production build |
+| `npm run desktop:assets` | Stage bundled server and static client for Electron |
+| `npm run electron:dev` | Build and open the desktop window |
+| `npm run electron:build` | Build and produce the Windows NSIS installer |
 | `npm run build:puzzles` | Regenerate the bundled puzzle library from a Lichess puzzle database dump (see `scripts/generate-puzzles.mjs`) |
 | `npm start` | Serve the production build |
 
@@ -86,7 +96,8 @@ The server prints the LAN URL (e.g. `http://192.168.1.25:3001`) — share it wit
 npm test
 ```
 
-Covers server game-lifecycle integrity (abandonment, forfeits, clock accounting incl. Fischer increments, timeouts, takebacks, spectator limits, room caps, time-control normalization), input validation, chess helpers, openings/book detection, statistics, persistence corruption handling, and the Stockfish pipeline (search lifecycle, score parsing, perspective normalization, cancellation, stale-output immunity, FEN replay, best-move failure handling) via a scripted fake UCI worker.
+Covers server game-lifecycle integrity (abandonment, forfeits, clock accounting incl. Fischer increments, timeouts, takebacks, spectator limits, room caps, time-control normalization), input validation, chess helpers, openings/book detection, statistics, persistence corruption handling, desktop security and origin validation (URL navigation checks, CLI parameter validation, port fallback), and the Stockfish pipeline (search lifecycle, score parsing, perspective normalization, cancellation, stale-output immunity, FEN replay, best-move failure handling) via a scripted fake UCI worker.
+
 
 ## Troubleshooting
 

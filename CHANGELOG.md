@@ -17,12 +17,18 @@ First stable release.
 - 1,320-puzzle rated tactics library (Lichess CC0) with difficulty filters and multi-move auto-replies
 - Practice sandbox with live engine evaluation
 
+### Desktop (Windows)
+- Native Windows desktop application packaging via Electron 44 and electron-builder 26 with 0 vulnerabilities
+- Standalone NSIS installer (`release/LAN-Chess-Setup-1.0.0.exe`) bundling the authoritative Express/Socket.IO server and static client with zero global Node/dependency requirements
+- Desktop security hardening: exact origin matching on navigation, strict `--connect` host/port validation, safe external URL opening, and process lifecycle cleanup
+- Automated test suite expanded to 112 tests across 10 test files
+
 ### Platform
 - 19 board themes, 8 piece sets, 5 highlight styles, 6 full UI themes, custom board builder — persisted locally
 - Game history with real PGN headers; player statistics
 - Accessibility: keyboard-navigable board, focus-managed modals, live-region announcements
 - Server integrity: forfeit-on-leave, abandonment guards, reconnect clock accounting, flood limits, room caps
-- 94 automated tests; typecheck-gated production build; dependency versions pinned
+- 112 automated tests; typecheck-gated production build; dependency versions pinned with 0 vulnerabilities
 
 ## [0.2.0] — 2026-09-06
 
