@@ -38,8 +38,8 @@
     "@types/react-dom": "^19.2.5",
     "autoprefixer": "^10.5.4",
     "concurrently": "^10.0.5",
-    "electron": "^33.4.11",
-    "electron-builder": "^25.1.8",
+    "electron": "^44.3.0",
+    "electron-builder": "^26.15.3",
     "esbuild": "^0.28.2",
     "postcss": "^8.5.26",
     "tailwindcss": "^3.4.19",
@@ -49,7 +49,7 @@
   "build": {
     "appId": "com.darshitn.lanchess",
     "productName": "LAN Chess",
-    "copyright": "Copyright \u00a9 2026 LAN Chess",
+    "copyright": "Copyright © 2026 LAN Chess",
     "directories": {
       "output": "release",
       "buildResources": "build"

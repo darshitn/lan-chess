@@ -11,6 +11,13 @@ const { spawn } = require('node:child_process');
 const net = require('node:net');
 const path = require('node:path');
 const http = require('node:http');
+const {
+  pickPort,
+  parseConnectArg,
+  isAllowedNavigation,
+  isSafeExternalUrl,
+  resolveIconPath,
+} = require('./desktop-utils.cjs');
 
 const PREFERRED_PORT = 3001;
 const SERVER_READY_TIMEOUT_MS = 15000;
@@ -24,15 +31,12 @@ const isDev = !app.isPackaged || process.env.LANCHESS_DEV === '1';
 
 // Allow launching the UI straight onto a remote host's table:
 //   LAN Chess.exe --connect=192.168.1.66:3001
-// (Advanced/documented usage — the normal join path is the host's LAN URL in a browser.)
 const connectArg = process.argv.find((a) => a.startsWith('--connect='));
 let connectTarget = null;
 if (connectArg) {
-  const raw = connectArg.slice('--connect='.length).trim();
-  // Validate: hostname/IP with optional port. No schemes, no paths, no credentials.
-  if (/^[a-zA-Z0-9.-]+(:\d{1,5})?$/.test(raw)) {
-    const withPort = raw.includes(':') ? raw : `${raw}:${PREFERRED_PORT}`;
-    connectTarget = `http://${withPort}`;
+  const parsed = parseConnectArg(connectArg, PREFERRED_PORT);
+  if (parsed) {
+    connectTarget = parsed.url;
   }
 }
 
@@ -53,24 +57,16 @@ function assetPaths() {
   return { serverScript: path.join(dir, 'server.cjs'), serverCwd: dir };
 }
 
-// ---------- port selection (single source of truth: main process) ----------
-function pickPort(preferred) {
-  return new Promise((resolve) => {
-    const probe = net.createServer();
-    probe.once('error', () => {
-      // Preferred port busy: fall back to an ephemeral free port.
-      const fallback = net.createServer();
-      fallback.listen(0, '127.0.0.1', () => {
-        const port = fallback.address().port;
-        fallback.close(() => resolve({ port, preferred: false }));
-      });
-    });
-    probe.listen(preferred, '0.0.0.0', () => {
-      const port = probe.address().port;
-      probe.close(() => resolve({ port, preferred: true }));
-    });
-  });
+function getAppIcon() {
+  const candidates = [
+    path.join(__dirname, '..', 'build', 'icon.ico'),
+    path.join(process.resourcesPath, 'icon.ico'),
+    path.join(process.resourcesPath, '..', 'icon.ico'),
+    path.join(process.resourcesPath, '..', 'build', 'icon.ico'),
+  ];
+  return resolveIconPath(candidates) || undefined;
 }
+
 
 function waitForServerReady(port, timeoutMs) {
   const started = Date.now();
@@ -127,9 +123,9 @@ function startServer(port) {
           defaultId: 0,
           noLink: true,
         })
-        .then(({ response }) => {
+        .then(async ({ response }) => {
           if (response === 0) {
-            launchServerAndWindow();
+            await restartServer();
           } else {
             app.quit();
           }
@@ -141,6 +137,43 @@ function startServer(port) {
   return child;
 }
 
+async function restartServer() {
+  const { port, preferred } = await pickPort(PREFERRED_PORT);
+  serverPort = port;
+  serverProcess = startServer(port);
+
+  try {
+    await waitForServerReady(port, SERVER_READY_TIMEOUT_MS);
+    const target = connectTarget ?? `http://127.0.0.1:${serverPort}`;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.loadURL(target);
+    } else {
+      createWindow();
+    }
+  } catch {
+    showServerFailedDialog(port, preferred);
+  }
+}
+
+function showServerFailedDialog(port, preferred) {
+  dialog.showMessageBoxSync({
+    type: 'error',
+    title: 'LAN Chess',
+    message: 'LAN Chess could not start its local server.',
+    detail: [
+      `Port used: ${port}${preferred ? '' : ' (default port 3001 was busy)'}`,
+      '',
+      'Possible causes:',
+      '• Antivirus or security software blocked the bundled server',
+      '• A firewall rule prevented binding a local port',
+      '• The installation is damaged — reinstall LAN Chess',
+    ].join('\n'),
+    buttons: ['Quit'],
+    noLink: true,
+  });
+  app.quit();
+}
+
 async function launchServerAndWindow() {
   const { port, preferred } = await pickPort(PREFERRED_PORT);
   serverPort = port;
@@ -150,22 +183,7 @@ async function launchServerAndWindow() {
   try {
     await waitForServerReady(port, SERVER_READY_TIMEOUT_MS);
   } catch {
-    dialog.showMessageBox({
-      type: 'error',
-      title: 'LAN Chess',
-      message: 'LAN Chess could not start its local server.',
-      detail: [
-        `Port used: ${port}${preferred ? '' : ' (default port 3001 was busy)'}`,
-        '',
-        'Possible causes:',
-        '• Antivirus or security software blocked the bundled server',
-        '• A firewall rule prevented binding a local port',
-        '• The installation is damaged — reinstall LAN Chess',
-      ].join('\n'),
-      buttons: ['Quit'],
-      noLink: true,
-    });
-    app.quit();
+    showServerFailedDialog(port, preferred);
     return;
   }
 
@@ -175,6 +193,14 @@ async function launchServerAndWindow() {
 // ---------- window ----------
 function createWindow() {
   const target = connectTarget ?? `http://127.0.0.1:${serverPort}`;
+  const allowedOrigins = [`http://127.0.0.1:${serverPort}`];
+  if (connectTarget) {
+    try {
+      allowedOrigins.push(new URL(connectTarget).origin);
+    } catch {
+      // ignore
+    }
+  }
 
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -184,7 +210,7 @@ function createWindow() {
     show: false,
     backgroundColor: '#020617',
     title: 'LAN Chess',
-    icon: path.join(isDev ? path.join(__dirname, '..', 'build') : path.join(process.resourcesPath, '..'), 'icon.ico'),
+    icon: getAppIcon(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -195,20 +221,26 @@ function createWindow() {
   });
 
   mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
-    log(`window open -> ${target}`);
-  });
-
-  // No in-app navigation away from the local server; external links go to the system browser.
-  const allowedOrigin = `http://127.0.0.1:${serverPort}`;
-  mainWindow.webContents.on('will-navigate', (event, url) => {
-    if (!url.startsWith(allowedOrigin) && !url.startsWith(target)) {
-      event.preventDefault();
-      if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+    if (mainWindow) {
+      mainWindow.show();
+      log(`window open -> ${target}`);
     }
   });
+
+  // Strict origin check prevents permissive string-prefix navigation confusion.
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (!isAllowedNavigation(url, allowedOrigins)) {
+      event.preventDefault();
+      if (isSafeExternalUrl(url)) {
+        shell.openExternal(url).catch(() => {});
+      }
+    }
+  });
+
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+    if (isSafeExternalUrl(url)) {
+      shell.openExternal(url).catch(() => {});
+    }
     return { action: 'deny' };
   });
 
@@ -263,6 +295,16 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.on('window-all-closed', () => {
+    quitting = true;
+    if (serverProcess) {
+      try {
+        serverProcess.kill();
+      } catch {
+        // process may already be gone
+      }
+      serverProcess = null;
+    }
     app.quit();
   });
 }
+
