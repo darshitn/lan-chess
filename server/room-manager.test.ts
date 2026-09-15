@@ -461,4 +461,177 @@ describe('RoomManager', () => {
       expect('error' in overflow).toBe(true);
     });
   });
+
+  describe('Draw offer and cancellation', () => {
+    it('allows a player to offer a draw and updates state', () => {
+      const mgr = new RoomManager();
+      const { room } = createGameOrFail(mgr, 'Alice', 'session-w-1', '5+0');
+      mgr.joinGame(room.code, 'Bob', 'session-b-2');
+
+      const res = mgr.offerDraw(room, 'session-w-1');
+      expect(res.success).toBe(true);
+      expect(room.drawOfferBy).toBe('w');
+
+      const state = mgr.stateFor(room);
+      expect(state.drawOfferBy).toBe('w');
+      expect(state.message).toBe('Draw offered by Alice.');
+    });
+
+    it('allows the offering player to cancel their pending draw offer', () => {
+      const mgr = new RoomManager();
+      const { room } = createGameOrFail(mgr, 'Alice', 'session-w-1', '5+0');
+      mgr.joinGame(room.code, 'Bob', 'session-b-2');
+
+      mgr.offerDraw(room, 'session-w-1');
+      expect(room.drawOfferBy).toBe('w');
+
+      const cancelRes = mgr.cancelDrawOffer(room, 'session-w-1');
+      expect(cancelRes.success).toBe(true);
+      expect(room.drawOfferBy).toBeNull();
+
+      const state = mgr.stateFor(room);
+      expect(state.drawOfferBy).toBeNull();
+      expect(state.message).toBe('Alice to move.');
+    });
+
+    it('rejects cancellation attempt by the opponent', () => {
+      const mgr = new RoomManager();
+      const { room } = createGameOrFail(mgr, 'Alice', 'session-w-1', '5+0');
+      mgr.joinGame(room.code, 'Bob', 'session-b-2');
+
+      mgr.offerDraw(room, 'session-w-1');
+      const cancelRes = mgr.cancelDrawOffer(room, 'session-b-2');
+      expect(cancelRes.error).toBe('Only the player who offered the draw can cancel it.');
+      expect(room.drawOfferBy).toBe('w');
+    });
+
+    it('rejects cancellation attempt by a spectator', () => {
+      const mgr = new RoomManager();
+      const { room } = createGameOrFail(mgr, 'Alice', 'session-w-1', '5+0');
+      mgr.joinGame(room.code, 'Bob', 'session-b-2');
+      mgr.joinSpectator(room.code, 'Charlie', 'session-spec-3');
+
+      mgr.offerDraw(room, 'session-w-1');
+      const cancelRes = mgr.cancelDrawOffer(room, 'session-spec-3');
+      expect(cancelRes.error).toBe('Only players can cancel a draw offer.');
+      expect(room.drawOfferBy).toBe('w');
+    });
+
+    it('rejects cancellation attempt with an invalid or stale session', () => {
+      const mgr = new RoomManager();
+      const { room } = createGameOrFail(mgr, 'Alice', 'session-w-1', '5+0');
+      mgr.joinGame(room.code, 'Bob', 'session-b-2');
+
+      mgr.offerDraw(room, 'session-w-1');
+      const cancelRes = mgr.cancelDrawOffer(room, 'unknown-session-xyz');
+      expect(cancelRes.error).toBe('Only players can cancel a draw offer.');
+      expect(room.drawOfferBy).toBe('w');
+    });
+
+    it('rejects duplicate cancellation when no draw offer is pending', () => {
+      const mgr = new RoomManager();
+      const { room } = createGameOrFail(mgr, 'Alice', 'session-w-1', '5+0');
+      mgr.joinGame(room.code, 'Bob', 'session-b-2');
+
+      const cancelRes = mgr.cancelDrawOffer(room, 'session-w-1');
+      expect(cancelRes.error).toBe('No draw offer is currently pending.');
+    });
+
+    it('rejects cancellation attempts when game is completed', () => {
+      const mgr = new RoomManager();
+      const { room } = createGameOrFail(mgr, 'Alice', 'session-w-1', '5+0');
+      mgr.joinGame(room.code, 'Bob', 'session-b-2');
+
+      mgr.offerDraw(room, 'session-w-1');
+      mgr.finishRoom(room, 'b', 'White resigned.');
+
+      const cancelRes = mgr.cancelDrawOffer(room, 'session-w-1');
+      expect(cancelRes.error).toBe('Game is not active.');
+    });
+
+    it('rejects draw offer from spectator or invalid session', () => {
+      const mgr = new RoomManager();
+      const { room } = createGameOrFail(mgr, 'Alice', 'session-w-1', '5+0');
+      mgr.joinGame(room.code, 'Bob', 'session-b-2');
+      mgr.joinSpectator(room.code, 'Charlie', 'session-spec-3');
+
+      const res1 = mgr.offerDraw(room, 'session-spec-3');
+      expect(res1.error).toBe('Only players can offer a draw.');
+
+      const res2 = mgr.offerDraw(room, 'unknown-session');
+      expect(res2.error).toBe('Only players can offer a draw.');
+    });
+
+    it('rejects opponent offering draw while an offer is already pending', () => {
+      const mgr = new RoomManager();
+      const { room } = createGameOrFail(mgr, 'Alice', 'session-w-1', '5+0');
+      mgr.joinGame(room.code, 'Bob', 'session-b-2');
+
+      mgr.offerDraw(room, 'session-w-1');
+      const res = mgr.offerDraw(room, 'session-b-2');
+      expect(res.error).toBe('A draw offer from your opponent is already pending.');
+    });
+
+    it('rejects same player offering draw twice', () => {
+      const mgr = new RoomManager();
+      const { room } = createGameOrFail(mgr, 'Alice', 'session-w-1', '5+0');
+      mgr.joinGame(room.code, 'Bob', 'session-b-2');
+
+      mgr.offerDraw(room, 'session-w-1');
+      const res = mgr.offerDraw(room, 'session-w-1');
+      expect(res.error).toBe('You have already offered a draw.');
+    });
+
+    it('clears pending draw offer when a legal move is made', () => {
+      const mgr = new RoomManager();
+      const { room } = createGameOrFail(mgr, 'Alice', 'session-w-1', '5+0');
+      mgr.joinGame(room.code, 'Bob', 'session-b-2');
+
+      mgr.offerDraw(room, 'session-w-1');
+      expect(room.drawOfferBy).toBe('w');
+
+      const moveRes = mgr.makeMove(room, 'session-w-1', 'e2', 'e4');
+      expect('error' in moveRes).toBe(false);
+      expect(room.drawOfferBy).toBeNull();
+    });
+
+    it('clears pending draw offer when opponent declines', () => {
+      const mgr = new RoomManager();
+      const { room } = createGameOrFail(mgr, 'Alice', 'session-w-1', '5+0');
+      mgr.joinGame(room.code, 'Bob', 'session-b-2');
+
+      mgr.offerDraw(room, 'session-w-1');
+      const res = mgr.respondDraw(room, 'session-b-2', false);
+      expect(res.success).toBe(true);
+      expect(room.drawOfferBy).toBeNull();
+      expect(room.resultReason).toBeNull();
+    });
+
+    it('finishes game as a draw and clears offer when opponent accepts', () => {
+      const mgr = new RoomManager();
+      const { room } = createGameOrFail(mgr, 'Alice', 'session-w-1', '5+0');
+      mgr.joinGame(room.code, 'Bob', 'session-b-2');
+
+      mgr.offerDraw(room, 'session-w-1');
+      const res = mgr.respondDraw(room, 'session-b-2', true);
+      expect(res.success).toBe(true);
+      expect(room.drawOfferBy).toBeNull();
+      expect(room.winner).toBe('draw');
+      expect(room.resultReason).toBe('Draw agreed by both players.');
+    });
+
+    it('clears pending draw offer on rematch', () => {
+      const mgr = new RoomManager();
+      const { room } = createGameOrFail(mgr, 'Alice', 'session-w-1', '5+0');
+      mgr.joinGame(room.code, 'Bob', 'session-b-2');
+
+      mgr.finishRoom(room, 'w', 'Checkmate');
+      room.drawOfferBy = 'w';
+      room.rematchRequests = { w: true, b: true };
+
+      const ok = mgr.handleRematchAgreement(room);
+      expect(ok).toBe(true);
+      expect(room.drawOfferBy).toBeNull();
+    });
+  });
 });

@@ -606,6 +606,10 @@ export function App() {
     });
   };
 
+  const handleCancelDraw = () => {
+    socket.emit(SOCKET_EVENTS.CANCEL_DRAW);
+  };
+
   const handleRespondDraw = (accept: boolean) => {
     socket.emit(SOCKET_EVENTS.RESPOND_DRAW, { accept });
   };
@@ -1044,7 +1048,7 @@ export function App() {
         </div>
       )}
 
-      {/* Draw offer banner */}
+      {/* Draw offer banner (for receiving player) */}
       {gameState.drawOfferBy !== null &&
         gameState.drawOfferBy !== color &&
         gameState.status === 'active' && (
@@ -1068,6 +1072,30 @@ export function App() {
                 Decline
               </button>
             </div>
+          </div>
+        )}
+
+      {/* Pending draw offer banner (for offering player) with accessible Cancel button */}
+      {gameState.drawOfferBy !== null &&
+        gameState.drawOfferBy === color &&
+        gameState.status === 'active' && (
+          <div
+            className="mb-4 rounded-xl border border-sky-500/50 bg-sky-500/10 p-3 flex items-center justify-between gap-3"
+            role="status"
+            aria-live="polite"
+          >
+            <div>
+              <p className="font-bold text-sky-300">Draw offer pending</p>
+              <p className="text-xs text-sky-200/80">Waiting for your opponent to accept or decline.</p>
+            </div>
+            <button
+              type="button"
+              onClick={handleCancelDraw}
+              className="action-button action-secondary text-xs border-sky-400/50 text-sky-200 hover:bg-sky-500/20"
+              aria-label="Cancel draw offer"
+            >
+              Cancel draw offer
+            </button>
           </div>
         )}
 
@@ -1165,14 +1193,25 @@ export function App() {
                   Request Takeback
                 </button>
               )}
-              <button
-                type="button"
-                onClick={handleOfferDraw}
-                disabled={Boolean(gameState.drawOfferBy)}
-                className="action-button action-secondary flex-1 text-xs"
-              >
-                Offer Draw
-              </button>
+              {gameState.drawOfferBy === color ? (
+                <button
+                  type="button"
+                  onClick={handleCancelDraw}
+                  className="action-button action-secondary flex-1 text-xs border-amber-500/60 text-amber-300 hover:bg-amber-500/20"
+                  aria-label="Cancel draw offer"
+                >
+                  Cancel Draw
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleOfferDraw}
+                  disabled={Boolean(gameState.drawOfferBy)}
+                  className="action-button action-secondary flex-1 text-xs"
+                >
+                  Offer Draw
+                </button>
+              )}
               <button
                 type="button"
                 onClick={handleResign}

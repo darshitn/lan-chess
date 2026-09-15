@@ -669,6 +669,67 @@ export class RoomManager {
     return { success: true };
   }
 
+  offerDraw(room: Room, sessionId: string): { success?: boolean; error?: string } {
+    if (!room.black || room.resultReason) {
+      return { error: 'Game is not active.' };
+    }
+    const player = this.getRoomPlayer(room, sessionId);
+    if (!player) {
+      return { error: 'Only players can offer a draw.' };
+    }
+    if (room.drawOfferBy === player.color) {
+      return { error: 'You have already offered a draw.' };
+    }
+    if (room.drawOfferBy && room.drawOfferBy !== player.color) {
+      return { error: 'A draw offer from your opponent is already pending.' };
+    }
+
+    room.drawOfferBy = player.color;
+    room.lastUpdated = Date.now();
+    return { success: true };
+  }
+
+  cancelDrawOffer(room: Room, sessionId: string): { success?: boolean; error?: string } {
+    if (!room.black || room.resultReason) {
+      return { error: 'Game is not active.' };
+    }
+    if (!room.drawOfferBy) {
+      return { error: 'No draw offer is currently pending.' };
+    }
+    const player = this.getRoomPlayer(room, sessionId);
+    if (!player) {
+      return { error: 'Only players can cancel a draw offer.' };
+    }
+    if (player.color !== room.drawOfferBy) {
+      return { error: 'Only the player who offered the draw can cancel it.' };
+    }
+
+    room.drawOfferBy = null;
+    room.lastUpdated = Date.now();
+    return { success: true };
+  }
+
+  respondDraw(room: Room, sessionId: string, accept: boolean): { success?: boolean; error?: string } {
+    if (!room.black || room.resultReason) {
+      return { error: 'Game is not active.' };
+    }
+    if (!room.drawOfferBy) {
+      return { error: 'No draw offer is currently pending.' };
+    }
+    const player = this.getRoomPlayer(room, sessionId);
+    if (!player || player.color === room.drawOfferBy) {
+      return { error: 'Only the opponent can respond to a draw offer.' };
+    }
+
+    if (accept) {
+      this.finishRoom(room, 'draw', 'Draw agreed by both players.');
+    } else {
+      room.drawOfferBy = null;
+      room.lastUpdated = Date.now();
+    }
+    return { success: true };
+  }
+
   requestTakeback(room: Room, sessionId: string): { success?: boolean; error?: string } {
     if (!room.allowTakebacks) {
       return { error: 'Takebacks are disabled in this match.' };

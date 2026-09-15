@@ -284,18 +284,42 @@ io.on('connection', (socket) => {
     if (!sessionId) return;
 
     const session = roomManager.getSession(sessionId);
-    if (!session || session.role !== 'player') return;
+    if (!session || session.role !== 'player') {
+      socket.emit(SOCKET_EVENTS.GAME_ERROR, { message: 'Only players can offer a draw.' });
+      return;
+    }
 
     const room = roomManager.getRoom(session.roomCode);
-    if (!room || room.resultReason || !room.black) return;
+    if (!room) return;
 
-    const player = roomManager.getRoomPlayer(room, sessionId);
-    if (!player) return;
+    const result = roomManager.offerDraw(room, sessionId);
+    if (result.error) {
+      socket.emit(SOCKET_EVENTS.GAME_ERROR, { message: result.error });
+      return;
+    }
 
-    if (room.drawOfferBy === player.color) return;
+    broadcastRoomState(room);
+  });
 
-    room.drawOfferBy = player.color;
-    room.lastUpdated = Date.now();
+  socket.on(SOCKET_EVENTS.CANCEL_DRAW, () => {
+    const sessionId = socket.data.sessionId;
+    if (!sessionId) return;
+
+    const session = roomManager.getSession(sessionId);
+    if (!session || session.role !== 'player') {
+      socket.emit(SOCKET_EVENTS.GAME_ERROR, { message: 'Only players can cancel a draw offer.' });
+      return;
+    }
+
+    const room = roomManager.getRoom(session.roomCode);
+    if (!room) return;
+
+    const result = roomManager.cancelDrawOffer(room, sessionId);
+    if (result.error) {
+      socket.emit(SOCKET_EVENTS.GAME_ERROR, { message: result.error });
+      return;
+    }
+
     broadcastRoomState(room);
   });
 
@@ -304,20 +328,20 @@ io.on('connection', (socket) => {
     if (!sessionId) return;
 
     const session = roomManager.getSession(sessionId);
-    if (!session || session.role !== 'player') return;
+    if (!session || session.role !== 'player') {
+      socket.emit(SOCKET_EVENTS.GAME_ERROR, { message: 'Only players can respond to a draw offer.' });
+      return;
+    }
 
     const room = roomManager.getRoom(session.roomCode);
-    if (!room || room.resultReason || !room.drawOfferBy) return;
+    if (!room) return;
 
-    const player = roomManager.getRoomPlayer(room, sessionId);
-    if (!player || player.color === room.drawOfferBy) return;
-
-    if (accept) {
-      roomManager.finishRoom(room, 'draw', 'Draw agreed by both players.');
-    } else {
-      room.drawOfferBy = null;
-      room.lastUpdated = Date.now();
+    const result = roomManager.respondDraw(room, sessionId, accept);
+    if (result.error) {
+      socket.emit(SOCKET_EVENTS.GAME_ERROR, { message: result.error });
+      return;
     }
+
     broadcastRoomState(room);
   });
 
@@ -517,6 +541,9 @@ io.on('connection', (socket) => {
 
         player.socketId = null;
         player.disconnected = true;
+        if (room.drawOfferBy === player.color) {
+          room.drawOfferBy = null;
+        }
         room.lastUpdated = Date.now();
 
         // Mark when the clock paused so the reconnecting player is not charged

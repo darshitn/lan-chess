@@ -58,6 +58,7 @@ export interface ClientToServerEvents {
   'make-move': (payload: { from: string; to: string; promotion?: PromotionPiece }) => void;
   'resign-game': () => void;
   'offer-draw': () => void;
+  'cancel-draw': () => void;
   'respond-draw': (payload: { accept: boolean }) => void;
   'request-takeback': () => void;
   'respond-takeback': (payload: { accept: boolean }) => void;
@@ -84,6 +85,7 @@ export const SOCKET_EVENTS = {
   MAKE_MOVE: 'make-move',
   RESIGN_GAME: 'resign-game',
   OFFER_DRAW: 'offer-draw',
+  CANCEL_DRAW: 'cancel-draw',
   RESPOND_DRAW: 'respond-draw',
   REQUEST_TAKEBACK: 'request-takeback',
   RESPOND_TAKEBACK: 'respond-takeback',
