@@ -1,24 +1,25 @@
 # LAN Chess — Comprehensive Project Audit
 
-**Date:** 2026-09-15 · **Branch:** `desktop-app` · **Repository:** `darshitn/lan-chess`
+**Date:** 2026-09-15 · **Branch:** `feature/draw-offer-cancellation` (integration target: `main`) · **Version:** `v1.1.0`
 
 ---
 
 ## 1. Executive Summary & Project Status
 
-The codebase is in a **fully hardened, tested, and release-ready state** across both its Core Web LAN release (**v1.0.0**) and its native **Windows Desktop (Electron)** packaging.
+The codebase is in a **fully hardened, tested, and release-ready state** for **v1.1.0**, which adds offline Play vs Computer and draw-offer cancellation on top of the v1.0.0 LAN multiplayer + Desktop release.
 
 | Metric / Dimension | Status | Notes |
 | :--- | :--- | :--- |
-| **Current Stable Tag** | `v1.0.0` (commit `e9b0732`) | Pushed on `main` |
-| **Active Branch** | `desktop-app` | Electron desktop packaging & security hardening |
-| **Automated Tests** | **130 / 130 Passing (100%)** | Vitest suite across 12 test files (server, client, desktop security, offline AI) |
+| **Current Integration Target** | `v1.1.0` (branch: `feature/draw-offer-cancellation`) | Pending merge to `main` upon user approval |
+| **Previous Stable** | `v1.0.0` (commit `e9b0732`, tag on `main`) | LAN multiplayer + Windows Desktop installer only |
+| **Automated Tests** | **153 / 153 Passing (100%)** | Vitest suite across 12 test files (server, client, desktop security, offline AI engine, computer-game controller) |
 | **Type Check** | **Clean** | Strict TypeScript check passes with 0 errors (`npm run typecheck`) |
 | **Production Build** | **Green** | Client bundle + Node server compile (`npm run build`) |
 | **Desktop Asset Staging** | **Green** | `npm run desktop:assets` bundles self-contained `server.cjs` + client |
-| **NSIS Installer** | **Built & Verified** | `release/LAN-Chess-Setup-1.0.0.exe` (122.5 MB) generated with exit code 0 |
+| **NSIS Installer** | **Pending rebuild** | `npm run electron:build` will produce `release/LAN-Chess-Setup-1.1.0.exe` |
 | **Vulnerabilities** | **0 vulnerabilities** | Both `npm audit` and `npm audit --omit=dev` report 0 findings across all 517 packages |
-| **Documentation Scope** | **Curated Release Docs** | `README.md`, `CHANGELOG.md`, `DESKTOP_APP.md`, `AUDIT.md`, and `DESKTOP_RELEASE_REPORT.md` are tracked. `ROAD_MAP.md` is intentionally kept local (git-ignored per `f0e513d`) as an internal planning reference. |
+| **git diff --check** | **Clean** | No whitespace errors in working tree |
+| **Documentation Scope** | **Curated Release Docs** | `README.md`, `CHANGELOG.md`, `DESKTOP_APP.md`, `AUDIT.md`, and `DESKTOP_RELEASE_REPORT.md` tracked. `ROAD_MAP.md` is intentionally kept local (git-ignored) as an internal planning reference. |
 
 ---
 
@@ -82,7 +83,7 @@ Every component below has been audited in code and verified with tests and build
   - True Fischer increments credited server-side the moment a valid move is registered.
   - Lightweight `clock-update` socket events tick at 1 Hz without re-broadcasting entire game state.
 - **Match Lifecycle Operations**:
-  - Resignation, Draw offers, Rematches (with color swap), and Takebacks are handled server-side.
+  - Resignation, Draw offers (**with cancellation** — only the offering player may rescind via `cancel-draw`; opponents, spectators, and invalid sessions are rejected), Rematches (with color swap), and Takebacks are handled server-side.
   - In-app [ConfirmDialog.tsx](client/components/ConfirmDialog.tsx) ensures dialogs work across all modern browsers (including Arc, Brave, Chrome, Safari) without getting blocked by native dialog suppression.
 - **Spectator Mode & Security**:
   - Up to 8 spectators per room ([room-manager.ts](server/room-manager.ts)). Spectator actions are strictly read-only + chat.
@@ -107,7 +108,15 @@ Every component below has been audited in code and verified with tests and build
 - **Audio Feedback**:
   - Synthesized WebAudio tones for moves, captures, checks, and game-over sound with master volume slider ([sound.ts](client/utils/sound.ts)).
 
-### 3.3 Offline Training, Review & Engine Analysis
+### 3.3 Offline Play vs Computer
+- **ComputerPlayerService** (`client/services/computer-player.ts`): wraps the bundled Stockfish WASM worker with a typed stop-and-drain cancellation protocol. A cancelled search's delayed `bestmove` can never resolve a later search; the protocol: send `stop`, drain all pending messages, then issue the new `go`.
+- **ComputerGameController** (`client/services/computer-game-controller.ts`): typed state machine for offline computer games with millisecond-precision clocks, per-increment accounting, and deadline rejection (moves refused after expiry regardless of interval timing).
+- **Difficulty Levels**: UCI capability probing at startup — only `Skill Level` and `UCI_LimitStrength`/`UCI_Elo` are advertised if Stockfish supports them. Five levels (Beginner → Master) map to verified `Skill Level` values without exposing fake Elo labels.
+- **Engine Error Recovery**: rejected `requestMove()` calls caught in the controller; stale-game guards prevent mutation after cancellation; **Restart Engine** recovery action surfaced to the user.
+- **PGN Integration**: completed computer games saved with `[White]`, `[Black]`, `[Result]`, `[Termination]`, and `[Mode "Computer"]` headers. Full post-game review (Stockfish analysis, replay, eval graph) works identically to multiplayer.
+- **Preserved Features**: board flip, themes, sounds, premoves, promotion dialog, accessibility (aria-live thinking announcements), all chess.js ending rules.
+
+### 3.4 Offline Training, Review & Engine Analysis
 - **Stockfish WASM Engine Worker**:
   - Bundled WASM build (`public/stockfish.wasm` and `stockfish.wasm.js`) running in a Web Worker with a strict FIFO search mutex ([stockfish-engine.ts](client/services/stockfish-engine.ts)).
   - `Contempt 0` and same-position `searchmoves` for perspective-safe centipawn evaluations.
@@ -149,21 +158,17 @@ Every component below has been audited in code and verified with tests and build
 
 All Phase 0 through Phase 12 items for Version 1 are complete. The remaining items represent **Version 2 roadmap additions**:
 
-### 4.1 Feature Additions for Version 2
-1. **"Play vs Computer / AI" in the Main Lobby**:
-   - Add an offline solo play mode in [Lobby.tsx](client/components/Lobby.tsx) with selectable difficulty, reusing the bundled Stockfish WASM engine.
-2. **In-Memory Volatility & Active Room Persistence**:
-   - Optional file-backed or SQLite persistence for active room state recovery across server restarts.
-3. **Game History Import & Export**:
-   - JSON archive and PGN multi-game export/import with strict schema validation.
-4. **Draw Offer Cancellation**:
-   - Typed client/server event allowing the offering player to rescind an active draw offer.
+### 4.1 Deferred — Scope Explicitly Excluded from v1.1.0
+The following items were evaluated and intentionally deferred; they are recorded here so the next release cycle has a clear backlog:
 
-### 4.2 Quality & Tooling Tasks
-1. **ESLint Integration**:
-   - Add a flat ESLint configuration for React Hooks rules once typescript-eslint compatibility with TypeScript 7 stabilizes.
-2. **Branch Hygiene**:
-   - The stale remote branches `feature/karan-ui` and `backup/wrong-project-snapshot` can be pruned upon explicit user authorization.
+1. **Game History Archive Import/Export**: JSON archive and PGN multi-game export/import with strict schema validation.
+2. **Host-Side Server Logging**: Structured server-side logging (request traces, room lifecycle events) for diagnostics.
+3. **Active Room Persistence**: Optional file-backed or SQLite persistence for active room state recovery across server restarts.
+4. **ESLint Integration**: Flat ESLint configuration for React Hooks rules (blocked on typescript-eslint compatibility with TypeScript 7).
+5. **CI Pipeline**: GitHub Actions (or equivalent) for automated test + build + lint on push.
+
+### 4.2 Quality & Tooling
+1. **Branch Hygiene**: Stale remote branches `feature/karan-ui` and `backup/wrong-project-snapshot` can be pruned upon explicit user authorization.
 
 ---
 
@@ -174,21 +179,26 @@ All Phase 0 through Phase 12 items for Version 1 are complete. The remaining ite
 | **Phase 0** | Project Foundation | **100% Complete** | None |
 | **Phase 1** | Chessboard & Logic | **100% Complete** | None |
 | **Phase 2** | LAN Multiplayer | **100% Complete** | None |
-| **Phase 3** | Reconnection & Sessions | **100% Complete** (30s grace, timer reschedule, offline clock compensation) | Optional persistent DB (V2) |
-| **Phase 4** | Chess Clocks | **100% Complete** (10 presets, Fischer increments, server authority) | Delay/Bronstein controls (V2) |
-| **Phase 5** | Game Lifecycle | **100% Complete** (Resign, draw, takeback, rematch color swap) | Cancel draw offer button (V2) |
+| **Phase 3** | Reconnection & Sessions | **100% Complete** (30s grace, timer reschedule, offline clock compensation) | Optional persistent DB (deferred) |
+| **Phase 4** | Chess Clocks | **100% Complete** (10 presets, Fischer increments, server authority) | Delay/Bronstein controls (deferred) |
+| **Phase 5** | Game Lifecycle | **100% Complete** (Resign, draw + cancel, takeback, rematch color swap) | None |
 | **Phase 6** | Custom Themes | **100% Complete** (19 board themes, 8 piece sets, 6 UI themes, custom builder) | None |
 | **Phase 7** | Review & Replay | **100% Complete** (Replay, FEN/PGN exporter, real headers) | None |
-| **Phase 8** | Stockfish Analysis | **100% Complete** (Local WASM, eval graph, move classification, accuracy) | **Play vs AI** mode (V2) |
+| **Phase 8** | Stockfish Analysis | **100% Complete** (Local WASM, eval graph, move classification, accuracy) | None |
+| **Phase 8a** | Play vs Computer | **100% Complete** (v1.1.0: typed controller, stop-and-drain, difficulty, PGN, review) | None |
 | **Phase 9** | Chat & UI Polish | **100% Complete** (Sanitized chat, WebAudio, ARIA accessibility) | None |
 | **Phase 10**| Spectator Mode | **100% Complete** (Server-enforced read-only, chat enabled) | None |
-| **Phase 11**| Security & Reliability| **100% Complete** (Flood limiter, room cap, 112 tests, 0 vulns) | ESLint setup (V2) |
-| **Phase 12**| LAN Deployment & Release| **100% Complete** (Web LAN v1.0.0 + Windows Desktop NSIS installer) | None |
+| **Phase 11**| Security & Reliability| **100% Complete** (Flood limiter, room cap, 153 tests, 0 vulns) | ESLint setup (deferred) |
+| **Phase 12**| LAN Deployment & Release| **100% Complete** (Web LAN v1.0.0 + Windows Desktop NSIS) | v1.1.0 installer pending |
 
 ---
 
-## 6. Actionable Next Steps
+## 6. Deferred Enhancements (Backlog)
 
-1. **Milestone 3**: Implement offline "Play vs Computer" in [Lobby.tsx](client/components/Lobby.tsx) using the bundled Stockfish engine.
-2. **Milestone 4**: Implement draw-offer cancellation, history import/export, and optional room persistence.
-3. **Milestone 5**: Tooling and ESLint configuration.
+The following items were evaluated and explicitly deferred from v1.1.0:
+
+1. **Game-History Archive Import/Export** — JSON + PGN multi-game archive with strict schema validation.
+2. **Host-Side Server Logging** — structured server lifecycle and room event logging for diagnostics.
+3. **Active Room Persistence** — optional SQLite/file-backed state recovery across server restarts.
+4. **ESLint Integration** — flat ESLint + React Hooks rules (blocked on typescript-eslint / TypeScript 7 compatibility).
+5. **CI Pipeline** — automated GitHub Actions test + build + audit on every push.

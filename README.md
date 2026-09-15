@@ -1,10 +1,10 @@
-# LAN Chess
+# LAN Chess — v1.1.0
 
-LAN Chess is a local-network multiplayer chess game built with React, Vite, Express, Socket.IO, and chess.js — no external chess service required.
+LAN Chess is a local-network multiplayer chess game built with React, Vite, Express, Socket.IO, and chess.js — no external chess service required. Play over LAN with friends, or play offline against the built-in Stockfish engine.
 
 ## Features
 
-### Play
+### Play — LAN Multiplayer
 - Real-time LAN multiplayer (rooms, room codes, LAN URL sharing)
 - Server-authoritative rules, turns, clocks, and results — the client never decides game state
 - 10 time controls grouped by speed with **Fischer increments** (server-credited per move):
@@ -19,10 +19,21 @@ LAN Chess is a local-network multiplayer chess game built with React, Vite, Expr
   - The server decides flag-falls (running out of time) and awards the win — clients cannot affect the clock
   - Low-time formatting and per-second updates are broadcast from the server
 - **Premoves**: queue a move while the opponent thinks (cyan ring markers); it auto-plays if still legal when your turn arrives, is discarded if made illegal, and can be cancelled (click target/origin again or Escape). Promotions auto-queen.
-- Resign, draw offers, takebacks (server-mediated), rematch with color swap — all behind in-app confirmation dialogs that work in every browser
+- Resign, draw offers (**with cancellation** — the offering player may rescind before the opponent responds), takebacks (server-mediated), rematch with color swap — all behind in-app confirmation dialogs that work in every browser
 - Spectator mode (view + chat only; enforced server-side)
 - Reconnection-safe sessions (30 s grace period, abandonment resolution)
 - Room chat with sanitization, rate limiting, and session-based identity
+
+### Play — vs Computer (offline)
+- **Play vs Computer** accessible directly from the main lobby — no server required
+- Choose **White, Black, or Random** colour before the game starts
+- Five **difficulty levels** (Beginner → Master) backed by UCI capability probing — no fake Elo labels
+- Engine running in a dedicated Web Worker via the bundled Stockfish WASM binary (same engine used for game review)
+- Full **stop-and-drain** cancellation: stale `bestmove` replies from a cancelled search can never corrupt a new search
+- Millisecond-precision offline clocks with Fischer increments; moves are rejected after the deadline regardless of interval timing
+- **Engine error recovery**: thinking state cleared on failure; working **Restart Engine** action exposed to the user
+- Completed games saved to history with valid PGN headers and full post-game review (Stockfish analysis, replay, eval graph)
+- Board flip, themes, sounds, premoves, promotion dialog, and all chess.js game-ending rules fully preserved
 
 ### Review & train (all offline, client-side)
 - Game history (last 50 games) with automatic saving and PGN/FEN tools (real PGN headers: players, result, termination)
@@ -39,7 +50,7 @@ LAN Chess is a local-network multiplayer chess game built with React, Vite, Expr
 - **Backend:** Node.js + Express + Socket.IO (in-memory authoritative state)
 - **Rules engine:** chess.js (validated on both sides; the server is authoritative)
 - **Engine:** Stockfish (WASM build from `stockfish.js`) in a Web Worker with a strict search lifecycle
-- **Tests:** Vitest (112 tests across server, client, and desktop security logic)
+- **Tests:** Vitest (153 tests across 12 test files — server, client, desktop security, offline engine & controller)
 
 ## Architecture
 
@@ -81,7 +92,7 @@ For detailed desktop architecture, see [DESKTOP_APP.md](DESKTOP_APP.md).
 | Script | What it does |
 | --- | --- |
 | `npm run dev` | Concurrent dev server + client with hot reload |
-| `npm test` | Vitest test suite (112 tests across 10 test files) |
+| `npm test` | Vitest test suite (153 tests across 12 test files) |
 | `npm run typecheck` | `tsc --noEmit` over the whole project |
 | `npm run build` | Typecheck, then client + server production build |
 | `npm run desktop:assets` | Stage bundled server and static client for Electron |
@@ -96,7 +107,7 @@ For detailed desktop architecture, see [DESKTOP_APP.md](DESKTOP_APP.md).
 npm test
 ```
 
-Covers server game-lifecycle integrity (abandonment, forfeits, clock accounting incl. Fischer increments, timeouts, takebacks, spectator limits, room caps, time-control normalization), input validation, chess helpers, openings/book detection, statistics, persistence corruption handling, desktop security and origin validation (URL navigation checks, CLI parameter validation, port fallback), and the Stockfish pipeline (search lifecycle, score parsing, perspective normalization, cancellation, stale-output immunity, FEN replay, best-move failure handling) via a scripted fake UCI worker.
+Covers server game-lifecycle integrity (abandonment, forfeits, clock accounting incl. Fischer increments, timeouts, takebacks, spectator limits, room caps, time-control normalization, draw-offer cancellation authorization), input validation, chess helpers, openings/book detection, statistics, persistence corruption handling, desktop security and origin validation (URL navigation checks, CLI parameter validation, port fallback), the Stockfish pipeline (search lifecycle, score parsing, perspective normalization, cancellation, stop-and-drain stale-output immunity, FEN replay, best-move failure handling), and the offline computer-game controller (clock settlement, deadline rejection, between-tick moves, engine error recovery, cancellation sequencing).
 
 
 ## Troubleshooting

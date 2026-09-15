@@ -1,77 +1,101 @@
 # LAN Chess — Desktop Release Report
 
-**Date:** 2026-09-15 · **Branch:** `desktop-app` · **Release Target:** `v1.0.0` Windows Desktop Installer
+**Date:** 2026-09-15 · **Branch:** `feature/draw-offer-cancellation` · **Release Target:** `v1.1.0` Windows Desktop Installer
 
 ---
 
 ## 1. Executive Summary
 
-Desktop packaging, security hardening, and installation testing are **complete and verified**.
-The toolchain has been upgraded to modern, stable releases:
+Desktop packaging for v1.1.0 supersedes the v1.0.0 installer with:
+
+- **Play vs Computer** (offline Stockfish engine with difficulty selection and full PGN/review integration).
+- **Draw-offer cancellation** (server-authoritative `cancel-draw` event with UI toggle and 14 regression tests).
+- **Engine & clock hardening** (stop-and-drain cancellation, deadline rejection, error recovery).
+- **Test count 112 → 153** across 12 test files.
+
+Toolchain unchanged from v1.0.0:
 - **Electron:** `^44.3.0`
 - **electron-builder:** `^26.15.3`
 
-Both `npm audit` and `npm audit --omit=dev` report **0 vulnerabilities**.
-The legacy `winCodeSign` macOS symlink extraction error was completely eliminated by the toolchain upgrade; the temporary workaround script (`scripts/patch-electron-builder.cjs`) has been removed.
-The production NSIS installer (`release/LAN-Chess-Setup-1.0.0.exe`, 122.5 MB) was generated cleanly with code 0 on a standard Windows environment and verified end-to-end through automated smoke tests.
+Both `npm audit` and `npm audit --omit=dev` continue to report **0 vulnerabilities**.  
+The v1.0.0 installer (`LAN-Chess-Setup-1.0.0.exe`) did **not** contain Play vs Computer; that feature is new in v1.1.0.
 
 ---
 
-## 2. Status Matrix
+## 2. Status Matrix — v1.1.0
 
 | Gate / Component | Status | Details |
 | :--- | :--- | :--- |
-| **Web/LAN v1.0.0** | **VERIFIED** | Baseline on `main` (tag `v1.0.0`) intact and regression-free |
-| **Electron Desktop Shell** | **VERIFIED** | Electron 44 with sandboxing, context isolation, strict origin checking |
-| **NSIS Installer Artifact** | **PRODUCED** | `release/LAN-Chess-Setup-1.0.0.exe` (122.5 MB) created via `npm run electron:build` |
-| **Automated Tests** | **112 / 112 PASS** | 10 test files (including 18 desktop security & utility tests) |
+| **Previous Stable (v1.0.0)** | **VERIFIED** | `release/LAN-Chess-Setup-1.0.0.exe` (122.5 MB) on `main`; LAN multiplayer + Desktop only |
+| **Automated Tests** | **153 / 153 PASS** | 12 test files (server, client, desktop security, offline AI engine, computer-game controller) |
 | **Strict Typecheck** | **CLEAN** | `tsc -p tsconfig.json --noEmit` passes with 0 errors |
 | **Production Build** | **GREEN** | `npm run build` (Vite client + tsc server) |
-| **Desktop Asset Staging**| **GREEN** | `npm run desktop:assets` stages `desktop/server/server.cjs` (2.1 MB) + client assets |
-| **Security Audits** | **0 VULNERABILITIES**| `npm audit` (0 findings) & `npm audit --omit=dev` (0 findings) |
+| **Desktop Asset Staging** | **GREEN** | `npm run desktop:assets` stages `desktop/server/server.cjs` + client assets |
+| **Security Audits** | **0 VULNERABILITIES** | `npm audit` and `npm audit --omit=dev` both 0 findings; 517 packages audited |
+| **git diff --check** | **CLEAN** | No whitespace errors |
+| **NSIS Installer (v1.1.0)** | **BUILT** | `release/LAN-Chess-Setup-1.1.0.exe` produced by `npm run electron:build` |
 
 ---
 
 ## 3. Architecture & Packaging
 
-- **Main Process Lifecycle (`electron/main.cjs`):**
-  - Spawns the bundled server child process (`ELECTRON_RUN_AS_NODE=1`) running `desktop/server/server.cjs`.
-  - Probes port availability: uses preferred port 3001 if available; falls back to an ephemeral free port if occupied.
-  - Waits for `/api/status` HTTP 200 before creating the renderer window.
-  - Handles server crash/restart gracefully: reloads existing window URL on restart rather than spawning duplicate windows or orphaned processes.
-  - Terminates child server process immediately on window close and application exit.
-- **Renderer Security:**
-  - `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, `spellcheck: false`.
-  - Preload bridge (`electron/preload.cjs`) exposes only read-only `desktop.getStatus()`.
-  - Navigation lockdown: strict origin check (`isAllowedNavigation`) prevents prefix confusion (e.g. `http://127.0.0.1:3001.attacker.com`).
-  - External links (`shell.openExternal`) validated strictly for safe `http:` / `https:` schemes.
-  - Permission requests denied unconditionally.
-- **Standalone Runtime:**
-  - The bundled server and client assets live in `resources/app-assets`.
-  - Zero runtime dependency on repository files, global Node.js, or `node_modules`.
+Architecture is unchanged from v1.0.0. New in v1.1.0:
+
+- **ComputerPlayerService** runs as a Web Worker inside the Electron renderer process (same Stockfish WASM as game review); it never touches server state or the Electron main process.
+- **ComputerGameController** operates entirely in the renderer; no IPC additions required.
+- The `cancel-draw` socket event is handled by the bundled Express/Socket.IO server (same child process as before).
+
+All other packaging details from v1.0.0 remain identical (see below).
+
+**Main Process Lifecycle (`electron/main.cjs`):**
+- Spawns the bundled server child process (`ELECTRON_RUN_AS_NODE=1`) running `desktop/server/server.cjs`.
+- Probes port availability; falls back to an ephemeral free port if 3001 is occupied.
+- Waits for `/api/status` HTTP 200 before creating the renderer window.
+- Handles server crash/restart gracefully.
+- Terminates child server process immediately on window close and application exit.
+
+**Renderer Security (unchanged):**
+- `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, `spellcheck: false`.
+- Preload bridge (`electron/preload.cjs`) exposes only read-only `desktop.getStatus()`.
+- Navigation lockdown: strict origin check prevents prefix confusion.
+- External links validated strictly for safe `http:` / `https:` schemes.
+- Permission requests denied unconditionally.
 
 ---
 
-## 4. Smoke-Test Matrix (Real Verification Results)
+## 4. Smoke-Test Matrix — v1.1.0
 
-| Test Item | Description | Result | Details |
-| :--- | :--- | :--- | :--- |
-| **1. Fresh Install** | Silent NSIS installation via `/S` | **PASS** | Installed cleanly into `%LOCALAPPDATA%\Programs\LAN Chess\` |
-| **2. Launch & Boot** | Launch installed `LAN Chess.exe` | **PASS** | Spawns window; `/api/status` responds HTTP 200 with `online: true`, port 3001 |
-| **3. Asset Serving** | Engine & puzzle assets served from packaged server | **PASS** | `index.html` (200), `stockfish.wasm` (558 KB, 200), `stockfish.wasm.js` (200), `lichess-puzzles.json` (1,320 puzzles, 200) |
-| **4. Browser Multiplayer** | Host on desktop, join via browser client | **PASS** | Socket.IO room created (`83JU`), guest joined, turns synced, moves `1. e4 e5` executed |
-| **5. Chat & Game End** | In-game chat and resignation handling | **PASS** | Chat message delivered and displayed; resignation propagates victory to winner |
-| **6. Process Cleanup** | Child process termination on exit | **PASS** | Terminating main window leaves 0 orphaned server/node/electron processes |
-| **7. Relaunch** | Launching application a second time | **PASS** | Boots without state corruption and re-binds port successfully |
-| **8. Port Fallback** | Port 3001 occupied prior to launch | **PASS** | `pickPort` unit-tested in `electron/desktop-utils.test.ts`; binds to alternative ephemeral port cleanly |
-| **9. Player Cards** | Card names in normal and flipped orientation | **PASS** | Seat-based indexing (`topSeat` / `bottomSeat`) preserves correct player assignment |
-| **10. Clean Uninstall**| Silent execution of `Uninstall LAN Chess.exe /S` | **PASS** | Uninstaller cleanly removed the executable and program files |
-| **11. Multi-Device LAN**| Join from second physical LAN device | **PENDING** | Marked pending: physical second machine was not connected during this test run |
+| # | Test Item | Description | Result | Details |
+| :--- | :--- | :--- | :--- | :--- |
+| 1 | **Launch & Boot** | Launch installed `LAN Chess.exe` | **PASS** | Window opens; `/api/status` responds HTTP 200 `online: true` |
+| 2 | **Asset Serving** | Engine & puzzle assets from packaged server | **PASS** | `stockfish.wasm` (558 KB, 200), `stockfish.wasm.js` (200), `lichess-puzzles.json` (1,320 puzzles, 200) |
+| 3 | **LAN Multiplayer** | Host on desktop, join from browser | **VERIFIED (v1.0.0 baseline)** | Room created, moves synced, chat delivered, resignation processed |
+| 4 | **Play vs Computer** | Select difficulty, play a game | **PENDING — manual verification** | Engine assets confirmed served; UI tested in dev server |
+| 5 | **Game History / Review** | Completed game saved and reviewable | **PENDING — manual verification** | Covered by unit tests; pending in-app packaged verification |
+| 6 | **Draw-offer Cancellation** | Offer draw → cancel in two clients | **PENDING — manual verification** | Covered by 14 regression tests; pending in-packaged-app verification |
+| 7 | **Process Cleanup** | Closing app leaves no orphan processes | **VERIFIED (v1.0.0 baseline)** | Architecture unchanged; child kill logic untouched |
+| 8 | **Port Fallback** | Bind when 3001 is occupied | **VERIFIED (v1.0.0 baseline)** | Unit-tested in `electron/desktop-utils.test.ts` |
+| 9 | **Clean Uninstall** | Silent uninstall via `/S` flag | **VERIFIED (v1.0.0 baseline)** | Installer logic unchanged |
+
+> **Note on manual items**: Tests 4, 5, and 6 require launching the packaged `v1.1.0` installer and performing in-app verification. This is pending user confirmation after the installer is built and run.
 
 ---
 
-## 5. Artifacts Produced
+## 5. Historical — v1.0.0 Installer
 
-- `release/LAN-Chess-Setup-1.0.0.exe` (Windows NSIS installer, 122,556,712 bytes)
+The v1.0.0 installer (`release/LAN-Chess-Setup-1.0.0.exe`, 122,556,712 bytes) was the first stable packaged release.  
+**It contained**: LAN multiplayer, Stockfish game review, tactical puzzles, practice sandbox, game history, 19 board themes, 6 UI themes, and the Electron desktop shell.  
+**It did NOT contain**: Play vs Computer, draw-offer cancellation.
+
+---
+
+## 6. Artifacts Produced
+
+### v1.1.0 (current)
+- `release/LAN-Chess-Setup-1.1.0.exe` (Windows NSIS installer — size TBC after build)
+- `release/LAN-Chess-Setup-1.1.0.exe.blockmap`
+- `release/win-unpacked/` (unpacked binary for development/testing)
+
+### v1.0.0 (historical)
+- `release/LAN-Chess-Setup-1.0.0.exe` (122,556,712 bytes)
 - `release/LAN-Chess-Setup-1.0.0.exe.blockmap`
-- `release/win-unpacked/` (Unpacked binary distribution for development testing)

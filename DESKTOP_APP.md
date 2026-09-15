@@ -16,6 +16,8 @@ Electron (window + server lifecycle)
 There is no second game implementation: the Electron layer never touches chess
 rules, rooms, or clocks.
 
+New in **v1.1.0**: **Play vs Computer** (offline Stockfish) and **draw-offer cancellation** are part of the bundled frontend; they require no additional Electron changes.
+
 ## Install
 
 1. Download `LAN-Chess-Setup-<version>.exe` from GitHub Releases.

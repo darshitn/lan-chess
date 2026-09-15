@@ -2,7 +2,41 @@
 
 All notable changes to LAN Chess are documented here.
 
-## [1.0.0] — 2026-09-06
+## [1.1.0] — 2026-09-15
+
+### Added — Play vs Computer (offline)
+- Offline **Play vs Computer** mode accessible from the main lobby: choose White / Black / Random colour and one of five difficulty levels (Beginner → Master) before the match starts.
+- Dedicated `ComputerPlayerService` wraps the bundled Stockfish WASM worker with a typed **stop-and-drain** cancellation protocol: a cancelled search's delayed `bestmove` can never resolve a later search, even when UCI replies arrive out of order.
+- `ComputerGameController` drives a typed computer-game state machine with millisecond-precision clocks, per-increment accounting, and **deadline rejection**: moves are refused once the clock has expired regardless of whether the interval callback has fired.
+- UCI capability probing at startup: only `Skill Level` (depth-capped) and `UCI_LimitStrength` / `UCI_Elo` are advertised if Stockfish reports supporting them — no fake difficulty labels.
+- Engine error recovery: rejected `requestMove()` calls are caught in the controller; stale-game guards prevent state mutation after cancellation; a working **Restart Engine** recovery action is exposed to the user.
+- Completed computer games are saved to game history with valid PGN headers (`[White]`, `[Black]`, `[Result]`, `[Termination]`, `[Mode "Computer"]`).
+- Full game-review integration: post-game Stockfish analysis, replay, FEN/PGN export, and evaluation graph work identically to multiplayer games.
+- Board flip, themes, sounds, premoves, promotion dialog, and all chess.js game-ending rules (checkmate, stalemate, insufficient material, 50-move rule, threefold repetition) preserved.
+- Accessibility: `aria-live` status region announces engine thinking / result; keyboard-navigable board and focus-managed modals unchanged.
+
+### Fixed — engine & clock hardening (correction pass)
+- **Engine cancellation**: replaced non-atomic cancel-and-reissue with an explicit `stop` + message-drain cycle so no stale reply can corrupt a subsequent search (regression test included).
+- **Clock correctness**: elapsed time is now settled for the active player before accepting any move (human or engine), applying increments, or changing turns; moves after the deadline are rejected even between interval ticks (regression tests for between-tick moves, delayed callbacks, and increments near timeout).
+- **Engine error recovery**: `requestMove()` rejection is caught, stale-game guard applied, thinking state cleared, and recovery action surfaced — tested with an intentional worker failure scenario.
+- **PGN export**: `[Event]`, `[Site]`, `[Date]`, and `[Mode]` headers added; duplicate-move crash on inconsistent replay fixed.
+
+### Added — Draw Offer Cancellation (Milestone 4.1)
+- New `cancel-draw` server event (`ClientToServerEvents`): only the **offering player** may cancel their own pending draw offer; opponents, spectators, and invalid sessions are rejected with typed error responses.
+- `RoomManager.cancelDrawOffer()` clears `room.drawOfferBy` and broadcasts updated room state; disconnecting while holding a pending offer also clears it automatically.
+- Client UI: **"Draw offer pending"** banner (`role="status"`, `aria-live="polite"`) with an accessible **Cancel draw offer** button; the Offer Draw action button toggles to **Cancel Draw** (amber-tinted) while an offer is live.
+- 14 new server-side regression tests covering authorization (opponent cannot cancel, spectator cannot cancel, invalid session), lifecycle (offer cleared by move / decline / acceptance / rematch), and invalid-state transitions.
+
+### Tests
+- Test suite expanded from **112 → 153 tests** across **12 test files** (added `computer-player.test.ts`, `computer-game-controller.test.ts`, and expanded `room-manager.test.ts`).
+
+### Documentation
+- `CHANGELOG.md`, `README.md`, `AUDIT.md`, `DESKTOP_APP.md`, and `DESKTOP_RELEASE_REPORT.md` updated to reflect v1.1.0 scope.
+- Deferred items recorded: game-history archive import/export, host-side logging, active-room persistence, ESLint integration, CI pipeline.
+
+## [1.0.0] — 2026-09-15
+
+
 
 First stable release.
 
