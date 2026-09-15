@@ -29,7 +29,7 @@ LAN Chess is a local-network multiplayer chess game built with React, Vite, Expr
 - Choose **White, Black, or Random** colour before the game starts
 - Five **difficulty levels** (Beginner → Master) backed by UCI capability probing — no fake Elo labels
 - Engine running in a dedicated Web Worker via the bundled Stockfish WASM binary (same engine used for game review)
-- Full **stop-and-drain** cancellation: stale `bestmove` replies from a cancelled search can never corrupt a new search
+- Full cancellation via **worker termination and replacement**: a cancelled worker is immediately terminated and replaced so stale `bestmove` replies can never leak into subsequent searches
 - Millisecond-precision offline clocks with Fischer increments; moves are rejected after the deadline regardless of interval timing
 - **Engine error recovery**: thinking state cleared on failure; working **Restart Engine** action exposed to the user
 - Completed games saved to history with valid PGN headers and full post-game review (Stockfish analysis, replay, eval graph)

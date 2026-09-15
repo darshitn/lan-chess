@@ -6,7 +6,7 @@ All notable changes to LAN Chess are documented here.
 
 ### Added — Play vs Computer (offline)
 - Offline **Play vs Computer** mode accessible from the main lobby: choose White / Black / Random colour and one of five difficulty levels (Beginner → Master) before the match starts.
-- Dedicated `ComputerPlayerService` wraps the bundled Stockfish WASM worker with a typed **stop-and-drain** cancellation protocol: a cancelled search's delayed `bestmove` can never resolve a later search, even when UCI replies arrive out of order.
+- Dedicated `ComputerPlayerService` wraps the bundled Stockfish WASM worker with typed worker termination and replacement cancellation: a cancelled search immediately terminates and replaces the worker, ensuring delayed `bestmove` replies can never resolve a later search.
 - `ComputerGameController` drives a typed computer-game state machine with millisecond-precision clocks, per-increment accounting, and **deadline rejection**: moves are refused once the clock has expired regardless of whether the interval callback has fired.
 - UCI capability probing at startup: only `Skill Level` (depth-capped) and `UCI_LimitStrength` / `UCI_Elo` are advertised if Stockfish reports supporting them — no fake difficulty labels.
 - Engine error recovery: rejected `requestMove()` calls are caught in the controller; stale-game guards prevent state mutation after cancellation; a working **Restart Engine** recovery action is exposed to the user.
@@ -16,7 +16,7 @@ All notable changes to LAN Chess are documented here.
 - Accessibility: `aria-live` status region announces engine thinking / result; keyboard-navigable board and focus-managed modals unchanged.
 
 ### Fixed — engine & clock hardening (correction pass)
-- **Engine cancellation**: replaced non-atomic cancel-and-reissue with an explicit `stop` + message-drain cycle so no stale reply can corrupt a subsequent search (regression test included).
+- **Engine cancellation**: implemented worker termination and replacement on cancellation so no stale reply can corrupt a subsequent search (regression test included).
 - **Clock correctness**: elapsed time is now settled for the active player before accepting any move (human or engine), applying increments, or changing turns; moves after the deadline are rejected even between interval ticks (regression tests for between-tick moves, delayed callbacks, and increments near timeout).
 - **Engine error recovery**: `requestMove()` rejection is caught, stale-game guard applied, thinking state cleared, and recovery action surfaced — tested with an intentional worker failure scenario.
 - **PGN export**: `[Event]`, `[Site]`, `[Date]`, and `[Mode]` headers added; duplicate-move crash on inconsistent replay fixed.

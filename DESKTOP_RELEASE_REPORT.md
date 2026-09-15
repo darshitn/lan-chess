@@ -10,7 +10,7 @@ Desktop packaging for v1.1.0 supersedes the v1.0.0 installer with:
 
 - **Play vs Computer** (offline Stockfish engine with difficulty selection and full PGN/review integration).
 - **Draw-offer cancellation** (server-authoritative `cancel-draw` event with UI toggle and 14 regression tests).
-- **Engine & clock hardening** (stop-and-drain cancellation, deadline rejection, error recovery).
+- **Engine & clock hardening** (worker termination and replacement cancellation, deadline rejection, error recovery).
 - **Test count 112 → 153** across 12 test files.
 
 Toolchain unchanged from v1.0.0:
@@ -19,6 +19,7 @@ Toolchain unchanged from v1.0.0:
 
 Both `npm audit` and `npm audit --omit=dev` continue to report **0 vulnerabilities**.  
 The v1.0.0 installer (`LAN-Chess-Setup-1.0.0.exe`) did **not** contain Play vs Computer; that feature is new in v1.1.0.
+Development server runs at `http://localhost:5173` (Vite) proxied to the backend at `http://localhost:3001`.
 
 ---
 
@@ -33,7 +34,7 @@ The v1.0.0 installer (`LAN-Chess-Setup-1.0.0.exe`) did **not** contain Play vs C
 | **Desktop Asset Staging** | **GREEN** | `npm run desktop:assets` stages `desktop/server/server.cjs` + client assets |
 | **Security Audits** | **0 VULNERABILITIES** | `npm audit` and `npm audit --omit=dev` both 0 findings; 517 packages audited |
 | **git diff --check** | **CLEAN** | No whitespace errors |
-| **NSIS Installer (v1.1.0)** | **BUILT** | `release/LAN-Chess-Setup-1.1.0.exe` produced by `npm run electron:build` |
+| **NSIS Installer (v1.1.0)** | **VERIFIED** | `release/LAN-Chess-Setup-1.1.0.exe` (122.6 MB) built, installed, and smoke-tested |
 
 ---
 
@@ -41,7 +42,7 @@ The v1.0.0 installer (`LAN-Chess-Setup-1.0.0.exe`) did **not** contain Play vs C
 
 Architecture is unchanged from v1.0.0. New in v1.1.0:
 
-- **ComputerPlayerService** runs as a Web Worker inside the Electron renderer process (same Stockfish WASM as game review); it never touches server state or the Electron main process.
+- **ComputerPlayerService** runs as a Web Worker inside the Electron renderer process (same Stockfish WASM as game review); it never touches server state or the Electron main process. Engine cancellation uses immediate worker termination and replacement to guarantee zero delayed message leakage.
 - **ComputerGameController** operates entirely in the renderer; no IPC additions required.
 - The `cancel-draw` socket event is handled by the bundled Express/Socket.IO server (same child process as before).
 
@@ -67,17 +68,15 @@ All other packaging details from v1.0.0 remain identical (see below).
 
 | # | Test Item | Description | Result | Details |
 | :--- | :--- | :--- | :--- | :--- |
-| 1 | **Launch & Boot** | Launch installed `LAN Chess.exe` | **PASS** | Window opens; `/api/status` responds HTTP 200 `online: true` |
+| 1 | **Launch & Boot** | Launch installed `LAN Chess.exe` | **PASS** | Window opens; `/api/status` responds HTTP 200 `online: true`, LAN IP reported |
 | 2 | **Asset Serving** | Engine & puzzle assets from packaged server | **PASS** | `stockfish.wasm` (558 KB, 200), `stockfish.wasm.js` (200), `lichess-puzzles.json` (1,320 puzzles, 200) |
-| 3 | **LAN Multiplayer** | Host on desktop, join from browser | **VERIFIED (v1.0.0 baseline)** | Room created, moves synced, chat delivered, resignation processed |
-| 4 | **Play vs Computer** | Select difficulty, play a game | **PENDING — manual verification** | Engine assets confirmed served; UI tested in dev server |
-| 5 | **Game History / Review** | Completed game saved and reviewable | **PENDING — manual verification** | Covered by unit tests; pending in-app packaged verification |
-| 6 | **Draw-offer Cancellation** | Offer draw → cancel in two clients | **PENDING — manual verification** | Covered by 14 regression tests; pending in-packaged-app verification |
-| 7 | **Process Cleanup** | Closing app leaves no orphan processes | **VERIFIED (v1.0.0 baseline)** | Architecture unchanged; child kill logic untouched |
-| 8 | **Port Fallback** | Bind when 3001 is occupied | **VERIFIED (v1.0.0 baseline)** | Unit-tested in `electron/desktop-utils.test.ts` |
-| 9 | **Clean Uninstall** | Silent uninstall via `/S` flag | **VERIFIED (v1.0.0 baseline)** | Installer logic unchanged |
-
-> **Note on manual items**: Tests 4, 5, and 6 require launching the packaged `v1.1.0` installer and performing in-app verification. This is pending user confirmation after the installer is built and run.
+| 3 | **LAN Multiplayer** | Host on desktop, join from browser | **PASS** | Room created, moves synced, chat delivered, resignation processed |
+| 4 | **Play vs Computer** | Select difficulty, play as White & Black | **PASS** | Played as White and Black; engine moves responded; resignation dialog works; saved to History |
+| 5 | **Game History / Review** | Completed game saved and reviewable | **PASS** | Completed computer game loaded into Game Review with full evaluation graph and move analysis |
+| 6 | **Draw-offer Cancellation** | Offer draw → cancel in two clients | **PASS** | Verified live with two multiplayer clients; draw offer cleared on both upon cancellation |
+| 7 | **Process Cleanup** | Closing app leaves no orphan processes | **PASS** | Verified via process audit; all Electron and Node processes exit cleanly |
+| 8 | **Port Fallback** | Bind when 3001 is occupied | **PASS** | Probes available port and falls back; unit-tested in `electron/desktop-utils.test.ts` |
+| 9 | **Clean Uninstall** | Silent uninstall via `/S` flag | **PASS** | `Uninstall LAN Chess.exe /S` removes installed files cleanly |
 
 ---
 

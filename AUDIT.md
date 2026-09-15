@@ -16,7 +16,7 @@ The codebase is in a **fully hardened, tested, and release-ready state** for **v
 | **Type Check** | **Clean** | Strict TypeScript check passes with 0 errors (`npm run typecheck`) |
 | **Production Build** | **Green** | Client bundle + Node server compile (`npm run build`) |
 | **Desktop Asset Staging** | **Green** | `npm run desktop:assets` bundles self-contained `server.cjs` + client |
-| **NSIS Installer** | **Pending rebuild** | `npm run electron:build` will produce `release/LAN-Chess-Setup-1.1.0.exe` |
+| **NSIS Installer** | **Verified (Built & Tested)** | `release/LAN-Chess-Setup-1.1.0.exe` (122.6 MB) verified with live in-app smoke tests |
 | **Vulnerabilities** | **0 vulnerabilities** | Both `npm audit` and `npm audit --omit=dev` report 0 findings across all 517 packages |
 | **git diff --check** | **Clean** | No whitespace errors in working tree |
 | **Documentation Scope** | **Curated Release Docs** | `README.md`, `CHANGELOG.md`, `DESKTOP_APP.md`, `AUDIT.md`, and `DESKTOP_RELEASE_REPORT.md` tracked. `ROAD_MAP.md` is intentionally kept local (git-ignored) as an internal planning reference. |
@@ -32,7 +32,7 @@ The codebase is in a **fully hardened, tested, and release-ready state** for **v
 1. **Server-Authoritative Multiplayer**: The client is strictly an interactive view. The Node.js server validates every move using [chess.js](shared/types.ts), calculates turns, deducts time, credits Fischer increments, and determines game over (checkmate, timeout, draw, resignation).
 2. **Offline-First & Local-First**: No external API calls, third-party CDNs, or external databases. The chess engine (Stockfish WASM) and tactical puzzles (1,320 curated puzzles) run 100% locally in the browser or desktop window.
 3. **Dual Target Distribution**:
-   - **Web App**: Hosted by a Node/Express process binding to `0.0.0.0:3001` that broadcasts the local LAN IP (`http://<LAN_IP>:3001`). Anyone on the Wi-Fi joins via browser with a 4-character room code.
+   - **Web App**: Hosted by a Node/Express process binding to `0.0.0.0:3001` that broadcasts the local LAN IP (`http://<LAN_IP>:3001`). In development, Vite runs at `http://localhost:5173` (proxying API and WebSocket traffic to `:3001`). Anyone on the Wi-Fi joins via browser with a 4-character room code.
    - **Desktop App (Windows Electron)**: A standalone desktop executable that bundles the Express server, Socket.IO backend, and React frontend into an isolated window with automatic lifecycle management and port negotiation.
 
 ### 2.3 System Architecture
@@ -109,7 +109,7 @@ Every component below has been audited in code and verified with tests and build
   - Synthesized WebAudio tones for moves, captures, checks, and game-over sound with master volume slider ([sound.ts](client/utils/sound.ts)).
 
 ### 3.3 Offline Play vs Computer
-- **ComputerPlayerService** (`client/services/computer-player.ts`): wraps the bundled Stockfish WASM worker with a typed stop-and-drain cancellation protocol. A cancelled search's delayed `bestmove` can never resolve a later search; the protocol: send `stop`, drain all pending messages, then issue the new `go`.
+- **ComputerPlayerService** (`client/services/computer-player.ts`): wraps the bundled Stockfish WASM worker with worker termination and replacement cancellation. When a search is cancelled, the active worker is immediately terminated and replaced, guaranteeing that delayed `bestmove` replies can never leak into subsequent searches.
 - **ComputerGameController** (`client/services/computer-game-controller.ts`): typed state machine for offline computer games with millisecond-precision clocks, per-increment accounting, and deadline rejection (moves refused after expiry regardless of interval timing).
 - **Difficulty Levels**: UCI capability probing at startup — only `Skill Level` and `UCI_LimitStrength`/`UCI_Elo` are advertised if Stockfish supports them. Five levels (Beginner → Master) map to verified `Skill Level` values without exposing fake Elo labels.
 - **Engine Error Recovery**: rejected `requestMove()` calls caught in the controller; stale-game guards prevent mutation after cancellation; **Restart Engine** recovery action surfaced to the user.
@@ -142,15 +142,16 @@ Every component below has been audited in code and verified with tests and build
   - Strict navigation origin validation ([desktop-utils.cjs](electron/desktop-utils.cjs)) preventing URL prefix confusion.
   - Port validation (1–65535) and CLI argument parsing (`--connect=`).
   - Single-instance lock and graceful child process cleanup upon quit.
-- **Smoke-Test Results (Performed & Recorded Live):**
-  1. **Clean Installation:** `release/LAN-Chess-Setup-1.0.0.exe` installed silently to `%LOCALAPPDATA%\Programs\LAN Chess\`.
+- **Smoke-Test Results — v1.1.0 (Performed & Recorded Live):**
+  1. **Clean Installation:** `release/LAN-Chess-Setup-1.1.0.exe` (122.6 MB) installed silently to `%LOCALAPPDATA%\Programs\LAN Chess\`.
   2. **Launch & Boot:** Launched installed `LAN Chess.exe`; `/api/status` responded HTTP 200 with `online: true`, port `3001`.
   3. **Static & Engine Assets:** Root HTML, `stockfish.wasm` (558 KB), `stockfish.wasm.js`, and `lichess-puzzles.json` (1,320 puzzles) all returned HTTP 200 OK directly from the packaged server.
-  4. **Full Multiplayer Match:** Sockets connected to desktop server; room created, guest joined, moves `1. e4 e5` executed, chat delivered, resignation processed, winner declared.
-  5. **Process Cleanup:** Terminating the desktop application left 0 lingering processes.
-  6. **Relaunch:** Application relaunched cleanly and resumed serving.
-  7. **Port Fallback:** Unit-tested with active net listeners; binds to available ephemeral port when 3001 is busy.
-  8. **Clean Uninstall:** Ran `Uninstall LAN Chess.exe /S`; installation directory and executable removed completely.
+  4. **Play vs Computer (White & Black):** Played as White and Black against Stockfish WASM; moves executed, engine replied, resignation processed and recorded with full PGN metadata.
+  5. **Game History & Review:** Completed computer game loaded into Game Review with full evaluation graph, move classification, and engine diagnostics.
+  6. **Multiplayer Draw-Offer & Cancellation:** Connected two multiplayer clients, offered draw, cancelled it; confirmed draw state cleared immediately on both clients.
+  7. **Process Cleanup:** Terminating the desktop application left 0 lingering processes.
+  8. **Port Fallback:** Unit-tested with active net listeners; binds to available ephemeral port when 3001 is busy.
+  9. **Clean Uninstall:** Ran `Uninstall LAN Chess.exe /S`; installation directory and executable removed completely.
 
 ---
 
@@ -185,11 +186,11 @@ The following items were evaluated and intentionally deferred; they are recorded
 | **Phase 6** | Custom Themes | **100% Complete** (19 board themes, 8 piece sets, 6 UI themes, custom builder) | None |
 | **Phase 7** | Review & Replay | **100% Complete** (Replay, FEN/PGN exporter, real headers) | None |
 | **Phase 8** | Stockfish Analysis | **100% Complete** (Local WASM, eval graph, move classification, accuracy) | None |
-| **Phase 8a** | Play vs Computer | **100% Complete** (v1.1.0: typed controller, stop-and-drain, difficulty, PGN, review) | None |
+| **Phase 8a** | Play vs Computer | **100% Complete** (v1.1.0: typed controller, worker termination/replacement, difficulty, PGN, review) | None |
 | **Phase 9** | Chat & UI Polish | **100% Complete** (Sanitized chat, WebAudio, ARIA accessibility) | None |
 | **Phase 10**| Spectator Mode | **100% Complete** (Server-enforced read-only, chat enabled) | None |
 | **Phase 11**| Security & Reliability| **100% Complete** (Flood limiter, room cap, 153 tests, 0 vulns) | ESLint setup (deferred) |
-| **Phase 12**| LAN Deployment & Release| **100% Complete** (Web LAN v1.0.0 + Windows Desktop NSIS) | v1.1.0 installer pending |
+| **Phase 12**| LAN Deployment & Release| **100% Complete** (Web LAN v1.0.0 + Windows Desktop NSIS v1.1.0 verified) | None |
 
 ---
 
