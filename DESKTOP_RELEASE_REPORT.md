@@ -92,10 +92,22 @@ The v1.0.0 installer (`release/LAN-Chess-Setup-1.0.0.exe`, 122,556,712 bytes) wa
 ## 6. Artifacts Produced
 
 ### v1.1.0 (current)
-- `release/LAN-Chess-Setup-1.1.0.exe` (Windows NSIS installer — size TBC after build)
-- `release/LAN-Chess-Setup-1.1.0.exe.blockmap`
-- `release/win-unpacked/` (unpacked binary for development/testing)
+- `release/LAN-Chess-Setup-1.1.0.exe` (122,562,605 bytes · 122.6 MB)
+- `release/LAN-Chess-Setup-1.1.0.exe.blockmap` (129,282 bytes)
+- `release/win-unpacked/` (unpacked portable binary directory)
 
 ### v1.0.0 (historical)
 - `release/LAN-Chess-Setup-1.0.0.exe` (122,556,712 bytes)
-- `release/LAN-Chess-Setup-1.0.0.exe.blockmap`
+- `release/LAN-Chess-Setup-1.0.0.exe.blockmap` (129,313 bytes)
+
+---
+
+## 7. Deferred Future Enhancements
+
+The following roadmap items were deliberately scoped out of this integration pass and tracked for future releases:
+1. **Game-history archive import/export**: Portable JSON/ZIP backup and restore of client-side game history.
+2. **Host-side logging**: Structured room audit logging on the host/server process.
+3. **Active-room persistence**: Reconnecting ongoing multiplayer games across server restarts.
+4. **ESLint integration**: Project-wide linting configuration and rule setup.
+5. **CI / Automated Pipeline**: GitHub Actions workflow for automated test, build, and packaging.
+
