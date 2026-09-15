@@ -278,4 +278,116 @@ describe('ComputerPlayerService', () => {
 
     service.dispose();
   });
+
+  it('prevents a cancelled search delayed bestmove from resolving a newer search (regression test)', async () => {
+    let workerACmds: string[] = [];
+    let workerBCmds: string[] = [];
+    let emitA: Emit | null = null;
+    let emitB: Emit | null = null;
+    let callCount = 0;
+
+    const workerA = new FakeWorker((cmd, emit) => {
+      workerACmds.push(cmd);
+      if (cmd === 'uci') {
+        emit('id name Testfish');
+        emit('uciok');
+      } else if (cmd === 'isready') {
+        emit('readyok');
+      } else if (cmd.startsWith('go ')) {
+        emitA = emit;
+      }
+    });
+
+    const workerB = new FakeWorker((cmd, emit) => {
+      workerBCmds.push(cmd);
+      if (cmd === 'uci') {
+        emit('id name Testfish');
+        emit('uciok');
+      } else if (cmd === 'isready') {
+        emit('readyok');
+      } else if (cmd.startsWith('go ')) {
+        emitB = emit;
+      }
+    });
+
+    const service = new ComputerPlayerService({
+      workerFactory: () => {
+        callCount++;
+        return callCount === 1 ? workerA : workerB;
+      },
+    });
+
+    // 1. Start search A
+    const searchAPromise = service.requestMove(START_FEN, 'medium', 1);
+
+    // Wait until search A's go command has been sent to worker A
+    while (!workerACmds.some((c) => c.startsWith('go '))) {
+      await new Promise((r) => setTimeout(r, 5));
+    }
+
+    // 2. Cancel search A
+    service.cancelSearch();
+    const resA = await searchAPromise;
+    expect(resA).toBeNull();
+    expect(workerA.terminated).toBe(true);
+
+    // 3. Request search B
+    const searchBPromise = service.requestMove(START_FEN, 'medium', 2);
+    while (!workerBCmds.some((c) => c.startsWith('go '))) {
+      await new Promise((r) => setTimeout(r, 5));
+    }
+
+    // 4. Deliver search A's reply BEFORE search B's reply
+    if (emitA) {
+      (emitA as Emit)('bestmove a2a3');
+    }
+    await new Promise((r) => setTimeout(r, 15));
+
+    // 5. Deliver search B's reply
+    if (emitB) {
+      (emitB as Emit)('bestmove e2e4');
+    }
+
+    const resB = await searchBPromise;
+    expect(resB).not.toBeNull();
+    expect(resB?.uci).toBe('e2e4'); // B's reply, NEVER A's delayed reply (a2a3)!
+
+    service.dispose();
+  });
+
+  it('rejects search and tears down worker when worker error fires during active search', async () => {
+    let activeWorker: FakeWorker | null = null;
+    let goSent = false;
+
+    const worker = new FakeWorker((cmd, emit) => {
+      if (cmd === 'uci') {
+        emit('id name Testfish');
+        emit('uciok');
+      } else if (cmd === 'isready') {
+        emit('readyok');
+      } else if (cmd.startsWith('go ')) {
+        goSent = true;
+      }
+    });
+
+    const service = new ComputerPlayerService({
+      workerFactory: () => {
+        activeWorker = worker;
+        return worker;
+      },
+    });
+
+    const searchPromise = service.requestMove(START_FEN, 'medium', 1);
+    while (!goSent) {
+      await new Promise((r) => setTimeout(r, 5));
+    }
+
+    // Trigger an actual worker error while search is calculating
+    activeWorker!.triggerError(new Error('WASM memory access out of bounds'));
+
+    await expect(searchPromise).rejects.toThrow('WASM memory access out of bounds');
+    expect(worker.terminated).toBe(true);
+
+    service.dispose();
+  });
 });

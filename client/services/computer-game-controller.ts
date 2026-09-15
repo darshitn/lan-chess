@@ -11,6 +11,7 @@ import { identifyOpening } from '../utils/openings.js';
 import { saveCompletedGame, type SavedGame } from './game-history.js';
 import {
   type ComputerDifficulty,
+  type ComputerMoveResult,
   type ComputerPlayerService,
   DIFFICULTY_CONFIGS,
 } from './computer-player.js';
@@ -58,6 +59,18 @@ export function parseTimeControlParams(tc: TimeControl): {
   };
 }
 
+export function formatPgnTimeControl(tc: TimeControl): string {
+  if (tc === 'unlimited') return '-';
+  const parts = tc.split('+');
+  const minutes = Number(parts[0]) || 0;
+  const baseSec = minutes * 60;
+  if (parts[1] !== undefined) {
+    const incSec = Number(parts[1]) || 0;
+    return `${baseSec}+${incSec}`;
+  }
+  return `${baseSec}`;
+}
+
 export function buildComputerPgn(
   chess: Chess,
   whiteName: string,
@@ -80,7 +93,7 @@ export function buildComputerPgn(
   chess.setHeader('White', whiteName);
   chess.setHeader('Black', blackName);
   chess.setHeader('Result', result);
-  chess.setHeader('TimeControl', timeControl);
+  chess.setHeader('TimeControl', formatPgnTimeControl(timeControl));
   if (reason) chess.setHeader('Termination', reason);
   return chess.pgn();
 }
@@ -220,6 +233,34 @@ export class ComputerGameController {
     }
   }
 
+  private settleClock(now = Date.now()): { timedOut: boolean } {
+    if (this.state.status !== 'active') return { timedOut: false };
+    if (this.state.whiteTimeMs === null || this.state.blackTimeMs === null) {
+      return { timedOut: false };
+    }
+
+    const elapsed = Math.max(0, now - this.lastClockTick);
+    this.lastClockTick = now;
+
+    if (elapsed === 0) return { timedOut: false };
+
+    if (this.state.turn === 'w') {
+      this.state.whiteTimeMs = Math.max(0, this.state.whiteTimeMs - elapsed);
+      if (this.state.whiteTimeMs === 0) {
+        this.finishGame('b', 'White ran out of time');
+        return { timedOut: true };
+      }
+    } else if (this.state.turn === 'b') {
+      this.state.blackTimeMs = Math.max(0, this.state.blackTimeMs - elapsed);
+      if (this.state.blackTimeMs === 0) {
+        this.finishGame('w', 'Black ran out of time');
+        return { timedOut: true };
+      }
+    }
+
+    return { timedOut: false };
+  }
+
   async makeHumanMove(
     from: Square,
     to: Square,
@@ -232,14 +273,20 @@ export class ComputerGameController {
       return { success: false, error: 'Not your turn' };
     }
 
+    // Settle elapsed time for current player up to now BEFORE accepting move
+    const { timedOut } = this.settleClock(Date.now());
+    if (timedOut || this.state.status !== 'active') {
+      return { success: false, error: 'Time expired' };
+    }
+
     try {
       const move = this.chess.move({ from, to, promotion: promotion ?? 'q' });
       if (!move) {
         return { success: false, error: 'Illegal move' };
       }
 
-      // Add Fischer increment if clocks active
-      if (this.state.whiteTimeMs !== null && this.incrementMs > 0) {
+      // Add Fischer increment only AFTER confirming move was made before deadline
+      if (this.incrementMs > 0) {
         if (this.state.humanColor === 'w' && this.state.whiteTimeMs !== null) {
           this.state.whiteTimeMs += this.incrementMs;
         } else if (this.state.humanColor === 'b' && this.state.blackTimeMs !== null) {
@@ -259,6 +306,7 @@ export class ComputerGameController {
       this.state.moves.push(gameMove);
       this.state.fen = this.chess.fen();
       this.state.turn = this.state.computerColor;
+      this.lastClockTick = Date.now();
 
       // Check game termination
       if (this.checkGameEnding(this.state.humanColor)) {
@@ -284,6 +332,18 @@ export class ComputerGameController {
     }
   }
 
+  async retryComputerMove(): Promise<void> {
+    if (
+      this.state.status !== 'active' ||
+      this.state.turn !== this.state.computerColor ||
+      this.state.isEngineThinking
+    ) {
+      return;
+    }
+    this.state.engineError = null;
+    await this.triggerComputerMove();
+  }
+
   private async triggerComputerMove(): Promise<void> {
     if (this.state.status !== 'active') return;
 
@@ -293,11 +353,22 @@ export class ComputerGameController {
     this.notifyState();
 
     const fenBeforeSearch = this.chess.fen();
-    const result = await this.playerService.requestMove(
-      fenBeforeSearch,
-      this.state.difficulty,
-      currentToken
-    );
+    let result: ComputerMoveResult | null = null;
+    try {
+      result = await this.playerService.requestMove(
+        fenBeforeSearch,
+        this.state.difficulty,
+        currentToken
+      );
+    } catch (err) {
+      if (this.state.status !== 'active' || this.searchToken !== currentToken) {
+        return;
+      }
+      this.state.isEngineThinking = false;
+      this.state.engineError = (err as Error).message || 'Stockfish engine error occurred';
+      this.notifyState();
+      return;
+    }
 
     // Stale or cancelled search check:
     // If the game ended (e.g. timeout race, resign) or a new search was requested,
@@ -307,6 +378,12 @@ export class ComputerGameController {
       this.searchToken !== currentToken ||
       this.chess.fen() !== fenBeforeSearch
     ) {
+      return;
+    }
+
+    // Settle elapsed time for computer up to now BEFORE accepting move or applying increment
+    const { timedOut } = this.settleClock(Date.now());
+    if (timedOut || this.state.status !== 'active') {
       return;
     }
 
@@ -334,7 +411,7 @@ export class ComputerGameController {
       }
 
       // Add Fischer increment if clocks active
-      if (this.state.whiteTimeMs !== null && this.incrementMs > 0) {
+      if (this.incrementMs > 0) {
         if (this.state.computerColor === 'w' && this.state.whiteTimeMs !== null) {
           this.state.whiteTimeMs += this.incrementMs;
         } else if (this.state.computerColor === 'b' && this.state.blackTimeMs !== null) {
@@ -354,6 +431,7 @@ export class ComputerGameController {
       this.state.moves.push(gameMove);
       this.state.fen = this.chess.fen();
       this.state.turn = this.state.humanColor;
+      this.lastClockTick = Date.now();
 
       if (this.checkGameEnding(this.state.computerColor)) {
         return;
@@ -473,27 +551,10 @@ export class ComputerGameController {
       return;
     }
 
-    const now = Date.now();
-    const elapsed = now - this.lastClockTick;
-    this.lastClockTick = now;
-
-    if (this.state.turn === 'w' && this.state.whiteTimeMs !== null) {
-      this.state.whiteTimeMs = Math.max(0, this.state.whiteTimeMs - elapsed);
-      if (this.state.whiteTimeMs === 0) {
-        // White ran out of time
-        this.finishGame('b', 'White ran out of time');
-        return;
-      }
-    } else if (this.state.turn === 'b' && this.state.blackTimeMs !== null) {
-      this.state.blackTimeMs = Math.max(0, this.state.blackTimeMs - elapsed);
-      if (this.state.blackTimeMs === 0) {
-        // Black ran out of time
-        this.finishGame('w', 'Black ran out of time');
-        return;
-      }
+    const { timedOut } = this.settleClock(Date.now());
+    if (!timedOut) {
+      this.notifyState();
     }
-
-    this.notifyState();
   }
 
   dispose(): void {

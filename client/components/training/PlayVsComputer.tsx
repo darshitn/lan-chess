@@ -386,17 +386,26 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
 
       {/* Engine Error Alert */}
       {gameState.engineError && (
-        <div className="mb-4 rounded-xl border border-rose-500/60 bg-rose-950/80 p-3.5 shadow-lg flex items-center justify-between gap-3">
+        <div className="mb-4 rounded-xl border border-rose-500/60 bg-rose-950/80 p-3.5 shadow-lg flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm font-semibold text-rose-200">
             ⚠️ {gameState.engineError}
           </p>
-          <button
-            type="button"
-            onClick={handleRestart}
-            className="action-button action-primary text-xs font-bold"
-          >
-            Retry / Restart
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => void controller?.retryComputerMove()}
+              className="action-button action-primary text-xs font-bold"
+            >
+              Retry Move
+            </button>
+            <button
+              type="button"
+              onClick={handleRestart}
+              className="action-button action-secondary text-xs"
+            >
+              Restart
+            </button>
+          </div>
         </div>
       )}
 

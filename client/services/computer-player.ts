@@ -239,29 +239,48 @@ export class ComputerPlayerService {
     });
   }
 
+  private workerInstanceId = 0;
+
   private handleError = (err: unknown) => {
+    const errorMsg =
+      err instanceof Error
+        ? err.message
+        : typeof err === 'object' && err !== null && 'message' in err
+        ? String((err as any).message)
+        : typeof err === 'string'
+        ? err
+        : 'Stockfish worker error';
+
     if (this.activeSearch) {
       const search = this.activeSearch;
       this.activeSearch = null;
       if (search.safetyTimer) clearTimeout(search.safetyTimer);
-      search.reject(new Error(typeof err === 'string' ? err : 'Stockfish worker error'));
+      search.reject(new Error(errorMsg));
     }
     this.teardownWorker();
   };
 
   private initPromise: Promise<EngineWorkerLike> | null = null;
 
+  private boundMessageHandler: ((event: { data: unknown }) => void) | null = null;
+  private boundErrorHandler: ((err: unknown) => void) | null = null;
+
   private teardownWorker(): void {
     const w = this.worker;
+    const msgH = this.boundMessageHandler;
+    const errH = this.boundErrorHandler;
     this.worker = null;
+    this.boundMessageHandler = null;
+    this.boundErrorHandler = null;
     this.isInitializing = false;
     this.initPromise = null;
     this.uciokResolve = null;
     this.readyokResolve = null;
+    this.workerInstanceId++;
     if (!w) return;
     try {
-      w.removeEventListener('message', this.handleMessage);
-      w.removeEventListener('error', this.handleError);
+      if (msgH) w.removeEventListener('message', msgH);
+      if (errH) w.removeEventListener('error', errH);
     } catch {
       // ignore
     }
@@ -288,9 +307,21 @@ export class ComputerPlayerService {
     const worker = this.workerFactory();
     this.worker = worker;
     this.isInitializing = true;
+    const instanceId = this.workerInstanceId;
 
-    worker.addEventListener('message', this.handleMessage);
-    worker.addEventListener('error', this.handleError);
+    const onMessage = (event: { data: unknown }) => {
+      if (this.workerInstanceId !== instanceId || this.worker !== worker) return;
+      this.handleMessage(event);
+    };
+    const onError = (err: unknown) => {
+      if (this.workerInstanceId !== instanceId || this.worker !== worker) return;
+      this.handleError(err);
+    };
+
+    this.boundMessageHandler = onMessage;
+    this.boundErrorHandler = onError;
+    worker.addEventListener('message', onMessage);
+    worker.addEventListener('error', onError);
 
     try {
       worker.postMessage('uci');
@@ -412,8 +443,8 @@ export class ComputerPlayerService {
   }
 
   /**
-   * Cancels any active engine search. Sends "stop" to the worker and terminates
-   * pending promises so late engine responses can never arrive or overwrite state.
+   * Cancels any active engine search. Replaces the cancelled worker and terminates
+   * pending promises so delayed engine responses can never arrive or resolve a newer search.
    */
   cancelSearch(): void {
     this.activeSearchToken += 1;
@@ -429,6 +460,8 @@ export class ComputerPlayerService {
       } catch {
         // ignore
       }
+      // Replace the cancelled worker so no delayed bestmove can ever leak into subsequent searches
+      this.teardownWorker();
       search.resolve(null);
     }
   }

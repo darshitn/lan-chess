@@ -5,6 +5,7 @@ import {
   type ComputerGameConfig,
   type ComputerGameState,
   parseTimeControlParams,
+  formatPgnTimeControl,
   buildComputerPgn,
 } from './computer-game-controller.js';
 import { ComputerPlayerService } from './computer-player.js';
@@ -44,6 +45,10 @@ class FakeWorker implements EngineWorkerLike {
     this.terminated = true;
     this.messageListeners.clear();
     this.errorListeners.clear();
+  }
+
+  triggerError(err: unknown): void {
+    for (const listener of this.errorListeners) listener(err);
   }
 }
 
@@ -426,8 +431,289 @@ async function waitFor(fn: () => boolean, timeoutMs = 1000): Promise<void> {
     expect(pgn).toContain('[White "Alice"]');
     expect(pgn).toContain('[Black "Stockfish (Medium)"]');
     expect(pgn).toContain('[Result "1-0"]');
-    expect(pgn).toContain('[TimeControl "3+2"]');
+    expect(pgn).toContain('[TimeControl "180+2"]');
     expect(pgn).toContain('[Termination "Black resigned"]');
     expect(pgn).toContain('1. e4 e5 2. Nf3');
+  });
+
+  it('converts time controls to standard PGN format including Unlimited', () => {
+    expect(formatPgnTimeControl('unlimited')).toBe('-');
+    expect(formatPgnTimeControl('3+2')).toBe('180+2');
+    expect(formatPgnTimeControl('1+0')).toBe('60+0');
+    expect(formatPgnTimeControl('1+1')).toBe('60+1');
+    expect(formatPgnTimeControl('5+0')).toBe('300+0');
+    expect(formatPgnTimeControl('10+0')).toBe('600+0');
+    expect(formatPgnTimeControl('15+10')).toBe('900+10');
+
+    const chess = new Chess();
+    const unlimitedPgn = buildComputerPgn(
+      chess,
+      'Alice',
+      'Stockfish (Easy)',
+      'w',
+      'Normal',
+      'unlimited'
+    );
+    expect(unlimitedPgn).toContain('[TimeControl "-"]');
+  });
+
+  describe('Clock correctness & timing tests', () => {
+    it('settles elapsed time between ticks before accepting move and applying increment', async () => {
+      const service = createMockPlayerService(() => {
+        // Do not respond immediately so we can inspect intermediate state
+      });
+
+      const config: ComputerGameConfig = {
+        playerName: 'Alice',
+        colorChoice: 'w',
+        difficulty: 'medium',
+        timeControl: '3+2', // 180,000 ms + 2,000 ms inc
+      };
+
+      const controller = new ComputerGameController(service, config);
+      await controller.startNewGame();
+
+      // Simulate 1.5 seconds elapsed since game start WITHOUT tickClock firing
+      (controller as any).lastClockTick = Date.now() - 1500;
+
+      // Human makes move 1. e4
+      const res = await controller.makeHumanMove('e2', 'e4');
+      expect(res.success).toBe(true);
+
+      const state = controller.getState();
+      // 180,000ms - 1500ms elapsed + 2000ms increment = 180,500ms
+      expect(state.whiteTimeMs).toBe(180500);
+
+      controller.dispose();
+      service.dispose();
+    });
+
+    it('rejects human move after deadline even if interval callback has not fired', async () => {
+      const service = createMockPlayerService();
+      const config: ComputerGameConfig = {
+        playerName: 'Alice',
+        colorChoice: 'w',
+        difficulty: 'medium',
+        timeControl: '1+0',
+      };
+
+      const controller = new ComputerGameController(service, config);
+      await controller.startNewGame();
+
+      // Player has 200ms left on clock
+      (controller as any).state.whiteTimeMs = 200;
+      // 350ms elapsed since last tick (tick callback was delayed and did not fire)
+      (controller as any).lastClockTick = Date.now() - 350;
+
+      // Player tries to move after deadline
+      const res = await controller.makeHumanMove('e2', 'e4');
+      expect(res.success).toBe(false);
+      expect(res.error).toBe('Time expired');
+
+      const state = controller.getState();
+      expect(state.status).toBe('finished');
+      expect(state.winner).toBe('b');
+      expect(state.reason).toBe('White ran out of time');
+      expect(state.moves.length).toBe(0); // Move was NOT accepted
+
+      controller.dispose();
+      service.dispose();
+    });
+
+    it('handles Fischer increment near timeout: applies increment only if move made before deadline', async () => {
+      const service = createMockPlayerService();
+      const config: ComputerGameConfig = {
+        playerName: 'Alice',
+        colorChoice: 'w',
+        difficulty: 'medium',
+        timeControl: '3+2', // 2,000 ms increment
+      };
+
+      const controller = new ComputerGameController(service, config);
+      await controller.startNewGame();
+
+      // Case 1: Player has 100ms left, moves after 40ms (before deadline)
+      (controller as any).state.whiteTimeMs = 100;
+      (controller as any).lastClockTick = Date.now() - 40;
+
+      const res1 = await controller.makeHumanMove('e2', 'e4');
+      expect(res1.success).toBe(true);
+      // Remaining: (100 - 40) + 2000 = 2060ms
+      expect(controller.getState().whiteTimeMs).toBe(2060);
+
+      controller.dispose();
+      service.dispose();
+    });
+
+    it('settles engine elapsed time and rejects engine move if engine exceeds its clock deadline', async () => {
+      let delayedEmit: Emit | null = null;
+      const service = createMockPlayerService((cmd, emit) => {
+        delayedEmit = emit;
+      });
+
+      const config: ComputerGameConfig = {
+        playerName: 'Alice',
+        colorChoice: 'w',
+        difficulty: 'medium',
+        timeControl: '1+1',
+      };
+
+      const controller = new ComputerGameController(service, config);
+      await controller.startNewGame();
+
+      // Human plays 1. e4
+      await controller.makeHumanMove('e2', 'e4');
+      expect(controller.getState().isEngineThinking).toBe(true);
+
+      // Wait until go command is sent to engine
+      await waitFor(() => delayedEmit !== null, 500);
+
+      // Computer has 100ms left
+      (controller as any).state.blackTimeMs = 100;
+      // Engine search takes 250ms (interval did not fire yet)
+      (controller as any).lastClockTick = Date.now() - 250;
+
+      // Engine finishes and returns bestmove after its clock expired
+      if (delayedEmit) {
+        (delayedEmit as Emit)('bestmove e7e5');
+      }
+      await new Promise((r) => setTimeout(r, 20));
+
+      const state = controller.getState();
+      expect(state.status).toBe('finished');
+      expect(state.winner).toBe('w');
+      expect(state.reason).toBe('Black ran out of time');
+      expect(state.moves.length).toBe(1); // Black's move was rejected and not recorded
+
+      controller.dispose();
+      service.dispose();
+    });
+  });
+
+  describe('Engine error recovery & stale guards', () => {
+    it('catches actual worker error during active search, clears thinking state, and exposes working retry action', async () => {
+      let activeWorker: FakeWorker | null = null;
+      let goCount = 0;
+
+      const worker = new FakeWorker((cmd, emit) => {
+        if (cmd === 'uci') {
+          emit('id name Testfish');
+          emit('uciok');
+        } else if (cmd === 'isready') {
+          emit('readyok');
+        } else if (cmd.startsWith('go ')) {
+          goCount++;
+          if (goCount === 1) {
+            // First search: simulate crash during search via error event
+            setTimeout(() => {
+              worker.triggerError(new Error('Engine crash: out of memory'));
+            }, 10);
+          } else {
+            // Retry search: responds successfully
+            setTimeout(() => {
+              emit('bestmove e7e5');
+            }, 10);
+          }
+        }
+      });
+
+      const service = new ComputerPlayerService({
+        workerFactory: () => {
+          activeWorker = worker;
+          return worker;
+        },
+      });
+
+      const config: ComputerGameConfig = {
+        playerName: 'Alice',
+        colorChoice: 'w',
+        difficulty: 'medium',
+        timeControl: 'unlimited',
+      };
+
+      const controller = new ComputerGameController(service, config);
+      await controller.startNewGame();
+
+      // Human plays 1. e4
+      await controller.makeHumanMove('e2', 'e4');
+      expect(controller.getState().isEngineThinking).toBe(true);
+
+      // Wait for error to propagate
+      await waitFor(() => !controller.getState().isEngineThinking, 500);
+
+      const errorState = controller.getState();
+      expect(errorState.isEngineThinking).toBe(false);
+      expect(errorState.engineError).toContain('Engine crash: out of memory');
+      expect(errorState.status).toBe('active'); // Game is still active
+
+      // Trigger the recovery action: retryComputerMove
+      await controller.retryComputerMove();
+
+      // Wait for engine reply to succeed
+      await waitFor(() => controller.getState().moves.length === 2, 500);
+
+      const recoveredState = controller.getState();
+      expect(recoveredState.engineError).toBeNull();
+      expect(recoveredState.moves.length).toBe(2);
+      expect(recoveredState.moves[1].san).toBe('e5');
+      expect(recoveredState.turn).toBe('w');
+
+      controller.dispose();
+      service.dispose();
+    });
+
+    it('guards against stale game updates when engine error arrives after resignation', async () => {
+      let activeWorker: FakeWorker | null = null;
+
+      const worker = new FakeWorker((cmd, emit) => {
+        if (cmd === 'uci') {
+          emit('id name Testfish');
+          emit('uciok');
+        } else if (cmd === 'isready') {
+          emit('readyok');
+        } else if (cmd.startsWith('go ')) {
+          // Do not reply immediately
+        }
+      });
+
+      const service = new ComputerPlayerService({
+        workerFactory: () => {
+          activeWorker = worker;
+          return worker;
+        },
+      });
+
+      const config: ComputerGameConfig = {
+        playerName: 'Alice',
+        colorChoice: 'w',
+        difficulty: 'medium',
+        timeControl: 'unlimited',
+      };
+
+      const controller = new ComputerGameController(service, config);
+      await controller.startNewGame();
+
+      // Human moves
+      await controller.makeHumanMove('e2', 'e4');
+      expect(controller.getState().isEngineThinking).toBe(true);
+
+      // Player resigns while engine is calculating
+      controller.resign();
+      expect(controller.getState().status).toBe('finished');
+      expect(controller.getState().reason).toBe('White resigned');
+
+      // Now worker triggers an error
+      worker.triggerError(new Error('Late error after resignation'));
+      await new Promise((r) => setTimeout(r, 20));
+
+      // Resignation status must remain intact; engine error should not overwrite finished state
+      const state = controller.getState();
+      expect(state.status).toBe('finished');
+      expect(state.reason).toBe('White resigned');
+      expect(state.engineError).toBeNull();
+
+      controller.dispose();
+      service.dispose();
+    });
   });
 });
