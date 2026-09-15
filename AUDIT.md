@@ -12,12 +12,13 @@ The codebase is in a **fully hardened, tested, and release-ready state** across 
 | :--- | :--- | :--- |
 | **Current Stable Tag** | `v1.0.0` (commit `e9b0732`) | Pushed on `main` |
 | **Active Branch** | `desktop-app` | Electron desktop packaging & security hardening |
-| **Automated Tests** | **112 / 112 Passing (100%)** | Vitest suite across 10 test files (server, client, desktop security) |
+| **Automated Tests** | **130 / 130 Passing (100%)** | Vitest suite across 12 test files (server, client, desktop security, offline AI) |
 | **Type Check** | **Clean** | Strict TypeScript check passes with 0 errors (`npm run typecheck`) |
 | **Production Build** | **Green** | Client bundle + Node server compile (`npm run build`) |
 | **Desktop Asset Staging** | **Green** | `npm run desktop:assets` bundles self-contained `server.cjs` + client |
 | **NSIS Installer** | **Built & Verified** | `release/LAN-Chess-Setup-1.0.0.exe` (122.5 MB) generated with exit code 0 |
 | **Vulnerabilities** | **0 vulnerabilities** | Both `npm audit` and `npm audit --omit=dev` report 0 findings across all 517 packages |
+| **Documentation Scope** | **Curated Release Docs** | `README.md`, `CHANGELOG.md`, `DESKTOP_APP.md`, `AUDIT.md`, and `DESKTOP_RELEASE_REPORT.md` are tracked. `ROAD_MAP.md` is intentionally kept local (git-ignored per `f0e513d`) as an internal planning reference. |
 
 ---
 

@@ -1,6 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { TimeControl } from '../../shared/types.js';
 import { formatTimeControl, TIME_CONTROL_GROUPS } from '../utils/chess-helpers.js';
+import {
+  type ComputerDifficulty,
+  DIFFICULTY_CONFIGS,
+} from '../services/computer-player.js';
+import type { ComputerGameConfig, PlayerColorChoice } from '../services/computer-game-controller.js';
 
 interface LobbyProps {
   playerName: string;
@@ -15,6 +20,7 @@ interface LobbyProps {
   onCreateGame: () => void;
   onJoinGame: () => void;
   onJoinSpectator: () => void;
+  onStartComputerGame: (config: ComputerGameConfig) => void;
   onOpenSettings: () => void;
   hostUrl: string | null;
   error: string | null;
@@ -34,11 +40,15 @@ export const Lobby: React.FC<LobbyProps> = ({
   onCreateGame,
   onJoinGame,
   onJoinSpectator,
+  onStartComputerGame,
   onOpenSettings,
   hostUrl,
   error,
   isConnecting,
 }) => {
+  const [computerColor, setComputerColor] = useState<PlayerColorChoice>('w');
+  const [computerDifficulty, setComputerDifficulty] = useState<ComputerDifficulty>('medium');
+  const [computerTimeControl, setComputerTimeControl] = useState<TimeControl>('3+2');
   return (
     <main className="mx-auto max-w-xl py-6 sm:py-10">
       <header className="mb-6 text-center">
@@ -94,6 +104,141 @@ export const Lobby: React.FC<LobbyProps> = ({
             maxLength={24}
             disabled={isConnecting}
           />
+        </section>
+
+        {/* Play vs Computer section */}
+        <section className="panel border-indigo-500/30 bg-gradient-to-br from-slate-900 via-slate-900/90 to-indigo-950/40 shadow-xl">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🤖</span>
+                <h2 className="text-lg font-bold text-white">Play vs Computer</h2>
+              </div>
+              <p className="mt-0.5 text-xs text-slate-400">
+                Play offline matches against Stockfish with customizable strength and clocks.
+              </p>
+            </div>
+            <span className="rounded-full bg-indigo-500/20 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-indigo-300 border border-indigo-500/30">
+              100% Offline
+            </span>
+          </div>
+
+          {/* Color Selection */}
+          <div className="mt-4">
+            <span className="block text-xs font-bold uppercase tracking-wider text-slate-400">
+              Your Side
+            </span>
+            <div className="mt-1.5 grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setComputerColor('w')}
+                className={`flex items-center justify-center gap-2 rounded-lg border p-2 text-xs font-semibold transition-all ${
+                  computerColor === 'w'
+                    ? 'border-amber-400 bg-amber-400/10 text-amber-300 font-bold shadow-sm'
+                    : 'border-slate-700 bg-slate-800/60 text-slate-300 hover:border-slate-600'
+                }`}
+              >
+                <span className="inline-block h-3 w-3 rounded-full border border-slate-300 bg-white" />
+                <span>White</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setComputerColor('random')}
+                className={`flex items-center justify-center gap-2 rounded-lg border p-2 text-xs font-semibold transition-all ${
+                  computerColor === 'random'
+                    ? 'border-amber-400 bg-amber-400/10 text-amber-300 font-bold shadow-sm'
+                    : 'border-slate-700 bg-slate-800/60 text-slate-300 hover:border-slate-600'
+                }`}
+              >
+                <span>🎲</span>
+                <span>Random</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setComputerColor('b')}
+                className={`flex items-center justify-center gap-2 rounded-lg border p-2 text-xs font-semibold transition-all ${
+                  computerColor === 'b'
+                    ? 'border-amber-400 bg-amber-400/10 text-amber-300 font-bold shadow-sm'
+                    : 'border-slate-700 bg-slate-800/60 text-slate-300 hover:border-slate-600'
+                }`}
+              >
+                <span className="inline-block h-3 w-3 rounded-full border border-slate-700 bg-slate-950" />
+                <span>Black</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Difficulty Selection */}
+          <div className="mt-4">
+            <span className="block text-xs font-bold uppercase tracking-wider text-slate-400">
+              Difficulty Tier
+            </span>
+            <div className="mt-1.5 grid grid-cols-2 gap-2 sm:grid-cols-5">
+              {(['beginner', 'easy', 'medium', 'hard', 'expert'] as ComputerDifficulty[]).map((d) => {
+                const cfg = DIFFICULTY_CONFIGS[d];
+                const selected = computerDifficulty === d;
+                return (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setComputerDifficulty(d)}
+                    className={`rounded-lg border p-2 text-left transition-all ${
+                      selected
+                        ? 'border-indigo-400 bg-indigo-500/15 text-white shadow-sm'
+                        : 'border-slate-700 bg-slate-800/50 text-slate-300 hover:border-slate-600'
+                    }`}
+                  >
+                    <div className="text-xs font-bold">{cfg.name}</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">Depth {cfg.depth}</div>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-1.5 text-[11px] text-slate-400 italic">
+              {DIFFICULTY_CONFIGS[computerDifficulty].description}
+            </p>
+          </div>
+
+          {/* Time Control Selection */}
+          <div className="mt-4">
+            <span className="block text-xs font-bold uppercase tracking-wider text-slate-400">
+              Time Control
+            </span>
+            <div className="mt-1.5 grid grid-cols-3 gap-2 sm:grid-cols-6">
+              {(['unlimited', '1+0', '3+2', '5+0', '10+0', '15+10'] as TimeControl[]).map((tc) => (
+                <button
+                  key={tc}
+                  type="button"
+                  onClick={() => setComputerTimeControl(tc)}
+                  className={`rounded-lg border p-2 text-center text-xs font-semibold transition-all ${
+                    computerTimeControl === tc
+                      ? 'border-emerald-400 bg-emerald-400/10 text-emerald-300 font-bold shadow-sm'
+                      : 'border-slate-700 bg-slate-800/60 text-slate-300 hover:border-slate-600'
+                  }`}
+                >
+                  {formatTimeControl(tc)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() =>
+              onStartComputerGame({
+                playerName: playerName.trim() || 'Player',
+                colorChoice: computerColor,
+                difficulty: computerDifficulty,
+                timeControl: computerTimeControl,
+              })
+            }
+            className="action-button action-primary mt-4 w-full text-base font-bold bg-indigo-600 hover:bg-indigo-500 border-indigo-400/50 flex items-center justify-center gap-2"
+          >
+            <span>⚔️</span>
+            <span>Start Match vs Computer</span>
+          </button>
         </section>
 
         {/* Create Game section */}

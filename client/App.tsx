@@ -25,6 +25,8 @@ import { GameReview } from './components/review/GameReview.js';
 import { HistoryView } from './components/review/HistoryView.js';
 import { PracticeBoard } from './components/training/PracticeBoard.js';
 import { PuzzlePlayer } from './components/training/PuzzlePlayer.js';
+import { PlayVsComputer } from './components/training/PlayVsComputer.js';
+import type { ComputerGameConfig } from './services/computer-game-controller.js';
 import {
   playMoveSound,
   playCaptureSound,
@@ -116,8 +118,9 @@ export function App() {
   }, []);
 
   // Application navigation view
-  const [currentView, setCurrentView] = useState<'play' | 'history' | 'review' | 'practice' | 'puzzles'>('play');
+  const [currentView, setCurrentView] = useState<'play' | 'computer' | 'history' | 'review' | 'practice' | 'puzzles'>('play');
   const [reviewGame, setReviewGame] = useState<SavedGame | null>(null);
+  const [computerConfig, setComputerConfig] = useState<ComputerGameConfig | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Preferences & Customization state
@@ -746,6 +749,26 @@ export function App() {
     );
   }
 
+  // RENDER: Play vs Computer View
+  if (currentView === 'computer' && computerConfig) {
+    return (
+      <PlayVsComputer
+        initialConfig={computerConfig}
+        theme={activeTheme}
+        pieceSet={preferences.pieceSet}
+        highlightStyle={preferences.highlightStyle}
+        boardSettings={preferences.boardSettings}
+        soundSettings={preferences.sound}
+        onBackToLobby={() => setCurrentView('play')}
+        onReviewGame={(game) => {
+          setReviewGame(game);
+          setCurrentView('review');
+        }}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+      />
+    );
+  }
+
   // RENDER: Puzzles View
   if (currentView === 'puzzles') {
     return (
@@ -771,6 +794,21 @@ export function App() {
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setComputerConfig({
+                  playerName: preferences.playerName.trim() || 'Player',
+                  colorChoice: 'w',
+                  difficulty: 'medium',
+                  timeControl: '3+2',
+                });
+                setCurrentView('computer');
+              }}
+              className="rounded-lg border border-indigo-700/60 bg-indigo-950/70 px-2.5 py-1.5 text-xs text-indigo-200 hover:border-indigo-400 hover:text-white font-semibold"
+            >
+              🤖 Vs Computer
+            </button>
             <button
               type="button"
               onClick={() => setCurrentView('history')}
@@ -816,6 +854,10 @@ export function App() {
           onCreateGame={handleCreateGame}
           onJoinGame={handleJoinGame}
           onJoinSpectator={handleJoinSpectator}
+          onStartComputerGame={(cfg) => {
+            setComputerConfig(cfg);
+            setCurrentView('computer');
+          }}
           onOpenSettings={() => setIsSettingsOpen(true)}
           hostUrl={hostUrl}
           error={error}
