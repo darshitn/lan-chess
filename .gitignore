@@ -21,3 +21,6 @@ RELEASE_V1_REPORT.md
 # desktop build outputs
 /desktop/
 release/
+
+# test screenshots and local artifacts
+artifacts/

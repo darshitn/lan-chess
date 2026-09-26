@@ -4,9 +4,58 @@ import path from 'node:path';
 import http from 'node:http';
 import { io } from 'socket.io-client';
 
-const ARTIFACT_DIR = 'C:\\Users\\Darshit N\\.gemini\\antigravity-ide\\brain\\c1c00a17-7974-4d14-9dbe-f1b9579cbd90';
-const CHROME_PATH = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-const SERVER_URL = 'http://127.0.0.1:3001';
+const SERVER_URL = process.env.SERVER_URL || 'http://127.0.0.1:3001';
+const OUTPUT_DIR = process.env.SCREENSHOTS_DIR || path.resolve(process.cwd(), 'artifacts', 'screenshots');
+
+function resolveChromePath() {
+  if (process.env.CHROME_PATH && fs.existsSync(process.env.CHROME_PATH)) {
+    return process.env.CHROME_PATH;
+  }
+  if (process.env.CHROME_BIN && fs.existsSync(process.env.CHROME_BIN)) {
+    return process.env.CHROME_BIN;
+  }
+
+  const platform = process.platform;
+  const candidates = [];
+
+  if (platform === 'win32') {
+    const programFiles = process.env['PROGRAMFILES'] || 'C:\\Program Files';
+    const programFilesX86 = process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)';
+    const localAppData = process.env['LOCALAPPDATA'] || (process.env.USERPROFILE ? path.join(process.env.USERPROFILE, 'AppData', 'Local') : '');
+
+    candidates.push(
+      path.join(programFiles, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+      path.join(programFilesX86, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+      localAppData ? path.join(localAppData, 'Google', 'Chrome', 'Application', 'chrome.exe') : '',
+      path.join(programFiles, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+      path.join(programFilesX86, 'Microsoft', 'Edge', 'Application', 'msedge.exe')
+    );
+  } else if (platform === 'darwin') {
+    candidates.push(
+      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      '/Applications/Chromium.app/Contents/MacOS/Chromium',
+      '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge'
+    );
+  } else {
+    candidates.push(
+      '/usr/bin/google-chrome',
+      '/usr/bin/google-chrome-stable',
+      '/usr/bin/chromium',
+      '/usr/bin/chromium-browser',
+      '/snap/bin/chromium'
+    );
+  }
+
+  for (const candidate of candidates) {
+    if (candidate && fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  throw new Error(
+    'Could not find Google Chrome or Chromium executable. Set CHROME_PATH or CHROME_BIN environment variable.'
+  );
+}
 
 class CdpClient {
   constructor(wsUrl) {
@@ -62,10 +111,13 @@ class CdpClient {
   }
 
   async screenshot(filename) {
-    const filepath = path.join(ARTIFACT_DIR, filename);
+    if (!fs.existsSync(OUTPUT_DIR)) {
+      fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+    }
+    const filepath = path.join(OUTPUT_DIR, filename);
     const res = await this.send('Page.captureScreenshot', { format: 'png' });
     fs.writeFileSync(filepath, Buffer.from(res.data, 'base64'));
-    console.log(`Saved screenshot: ${filename}`);
+    console.log(`Saved screenshot: ${filepath}`);
   }
 
   close() {
@@ -78,10 +130,13 @@ async function sleep(ms) {
 }
 
 async function main() {
-  console.log('--- Starting Comprehensive Visual & Functional Acceptance Tests ---');
+  console.log('--- Starting Chrome Viewport Acceptance Tests (Headless Emulation) ---');
+  const chromePath = resolveChromePath();
+  console.log(`Using browser executable: ${chromePath}`);
+  console.log(`Saving screenshots to: ${OUTPUT_DIR}`);
 
   // Launch headless Chrome with remote debugging on port 9223 to avoid conflicts
-  const chromeProc = spawn(CHROME_PATH, [
+  const chromeProc = spawn(chromePath, [
     '--headless=new',
     '--remote-debugging-port=9223',
     '--remote-allow-origins=*',
@@ -291,19 +346,19 @@ async function main() {
         })()
       `);
 
-      console.log(`Viewport ${vp.name}: board=${Math.round(metrics.boardW)}x${Math.round(metrics.boardH)} px, bottomCardBottom=${Math.round(metrics.bottomCardBottom)}px, viewportH=${metrics.viewportH}px, hScroll=${metrics.hasHScroll}`);
+      console.log(`Chrome emulation at ${vp.name}: board=${Math.round(metrics.boardW)}x${Math.round(metrics.boardH)} px, bottomCardBottom=${Math.round(metrics.bottomCardBottom)}px, viewportH=${metrics.viewportH}px, hScroll=${metrics.hasHScroll}`);
 
       if (metrics.hasHScroll) {
         throw new Error(`Horizontal scrollbar detected at viewport ${vp.name}!`);
       }
     }
 
-    // Capture required screenshot: waiting for opponent at 1366x768
+    // Capture screenshot: Chrome emulation of waiting for opponent at 1366x768
     await client.setViewport(1366, 768);
     await sleep(600);
     await client.screenshot('waiting_1366x768.png');
 
-    // Capture required screenshot: desktop application default at 1280x800
+    // Capture screenshot: Chrome emulation at desktop default resolution 1280x800
     await client.setViewport(1280, 800);
     await sleep(600);
     await client.screenshot('desktop_1280x800.png');
