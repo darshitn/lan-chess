@@ -36,7 +36,7 @@ export const PlayerCard: React.FC<PlayerCardProps> = React.memo(({
 
   return (
     <div
-      className={`rounded-xl border p-3 transition-all duration-200 ${
+      className={`player-card rounded-xl border p-2 sm:p-2.5 lg:p-3 transition-all duration-200 ${
         isTurn
           ? 'border-amber-400/80 bg-slate-800/90 shadow-md shadow-amber-500/10'
           : 'border-slate-800 bg-slate-900/60'

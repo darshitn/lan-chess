@@ -46,12 +46,14 @@ function broadcastRoomState(room: Room) {
 }
 
 function emitAssignments(room: Room) {
+  const hostUrl = getHostUrl();
   if (room.white?.socketId) {
     io.to(room.white.socketId).emit(SOCKET_EVENTS.ROOM_JOINED, {
       roomCode: room.code,
       playerColor: 'w',
       sessionId: room.white.sessionId,
       role: 'player',
+      hostUrl,
     });
   }
   if (room.black?.socketId) {
@@ -60,6 +62,7 @@ function emitAssignments(room: Room) {
       playerColor: 'b',
       sessionId: room.black.sessionId,
       role: 'player',
+      hostUrl,
     });
   }
   for (const spec of room.spectators) {
@@ -69,6 +72,7 @@ function emitAssignments(room: Room) {
         playerColor: null,
         sessionId: spec.sessionId,
         role: 'spectator',
+        hostUrl,
       });
     }
   }
@@ -134,6 +138,7 @@ io.on('connection', (socket) => {
           playerColor: player.color,
           sessionId: player.sessionId,
           role: 'player',
+          hostUrl: getHostUrl(),
         });
       }
     } else {
@@ -154,6 +159,7 @@ io.on('connection', (socket) => {
           playerColor: null,
           sessionId: spec.sessionId,
           role: 'spectator',
+          hostUrl: getHostUrl(),
         });
       }
     }
@@ -200,6 +206,7 @@ io.on('connection', (socket) => {
       playerColor: player.color,
       sessionId: player.sessionId,
       role: 'player',
+      hostUrl: getHostUrl(),
     });
 
     broadcastRoomState(room);
@@ -222,6 +229,7 @@ io.on('connection', (socket) => {
       playerColor: null,
       sessionId: spectator.sessionId,
       role: 'spectator',
+      hostUrl: getHostUrl(),
     });
 
     broadcastRoomState(room);

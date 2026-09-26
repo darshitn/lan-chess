@@ -3,6 +3,7 @@ import { Chess } from 'chess.js';
 import type { GameMove } from '../../../shared/types.js';
 import type { BoardDisplaySettings, BoardTheme, HighlightStyleId, PieceSetId } from '../../types/preferences.js';
 import { Chessboard } from '../Chessboard.js';
+import { ResponsiveBoardFrame } from '../ResponsiveBoardFrame.js';
 import { PgnFenTools } from './PgnFenTools.js';
 import { EngineAnalysisPanel } from '../analysis/EngineAnalysisPanel.js';
 import {
@@ -184,9 +185,9 @@ export const GameReview: React.FC<GameReviewProps> = ({
   }, []);
 
   return (
-    <div className="mx-auto min-h-screen max-w-6xl px-3 py-4 sm:px-6 sm:py-6">
+    <div className="mx-auto min-h-screen max-w-6xl px-3 py-2 sm:px-6 sm:py-3.5">
       {/* Header bar */}
-      <header className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+      <header className="mb-2 sm:mb-3 flex flex-wrap items-center justify-between gap-2.5 border-b border-slate-800 pb-2 sm:pb-2.5">
         <div>
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold uppercase tracking-[.25em] text-amber-400">
@@ -225,11 +226,11 @@ export const GameReview: React.FC<GameReviewProps> = ({
       </header>
 
       {/* Main Grid: Board Column + Sidebar Review Tools */}
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_24rem] lg:items-start">
+      <div className="grid gap-4 lg:gap-6 lg:grid-cols-[minmax(0,1fr)_24rem] lg:items-start">
         {/* Left Column: Board & Controls */}
         <section className="mx-auto w-full max-w-[46rem]">
           {/* Position Info Bar */}
-          <div className="mb-2 flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/90 px-3 py-2 text-xs">
+          <div className="mb-1.5 sm:mb-2 flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/90 px-3 py-1.5 text-xs">
             <span className="font-semibold text-white">
               {currentPly === 0 ? 'Starting Position' : `Move ${Math.ceil(currentPly / 2)} (${currentPosition.lastMove?.san})`}
             </span>
@@ -238,23 +239,25 @@ export const GameReview: React.FC<GameReviewProps> = ({
             </span>
           </div>
 
-          <Chessboard
-            chess={currentPosition.chess}
-            flipped={flipped}
-            selectedSquare={null}
-            legalTargets={EMPTY_LEGAL_TARGETS}
-            lastMove={currentPosition.lastMove}
-            isInteractive={false}
-            theme={theme}
-            pieceSet={pieceSet}
-            highlightStyle={highlightStyle}
-            boardSettings={boardSettings}
-            onSquareClick={() => {}}
-            onPieceDrop={() => {}}
-          />
+          <ResponsiveBoardFrame>
+            <Chessboard
+              chess={currentPosition.chess}
+              flipped={flipped}
+              selectedSquare={null}
+              legalTargets={EMPTY_LEGAL_TARGETS}
+              lastMove={currentPosition.lastMove}
+              isInteractive={false}
+              theme={theme}
+              pieceSet={pieceSet}
+              highlightStyle={highlightStyle}
+              boardSettings={boardSettings}
+              onSquareClick={() => {}}
+              onPieceDrop={() => {}}
+            />
+          </ResponsiveBoardFrame>
 
           {/* Replay Controls Bar */}
-          <div className="mt-3 flex items-center justify-center gap-2 rounded-xl border border-slate-800 bg-slate-900/80 p-2.5 shadow-md">
+          <div className="mt-2 sm:mt-3 flex items-center justify-center gap-2 rounded-xl border border-slate-800 bg-slate-900/80 p-2 sm:p-2.5 shadow-md">
             <button
               type="button"
               onClick={goFirst}
@@ -303,7 +306,7 @@ export const GameReview: React.FC<GameReviewProps> = ({
         </section>
 
         {/* Right Column: Engine Analysis & Move List */}
-        <aside className="space-y-4">
+        <aside className="space-y-3 lg:max-h-[calc(100dvh-5.5rem)] lg:overflow-y-auto lg:pr-1">
           <EngineAnalysisPanel
             currentEvaluation={currentEvaluation}
             currentPly={currentPly}

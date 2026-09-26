@@ -6,7 +6,7 @@
  * live in the bundled Node/Express server (Room Manager + chess.js), reached
  * by the React UI over Socket.IO exactly like the browser version.
  */
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, clipboard } = require('electron');
 const { spawn } = require('node:child_process');
 const net = require('node:net');
 const path = require('node:path');
@@ -17,6 +17,7 @@ const {
   isAllowedNavigation,
   isSafeExternalUrl,
   resolveIconPath,
+  validateClipboardText,
 } = require('./desktop-utils.cjs');
 
 const PREFERRED_PORT = 3001;
@@ -256,13 +257,25 @@ function createWindow() {
   mainWindow.loadURL(target);
 }
 
-// ---------- IPC (minimal, read-only) ----------
+// ---------- IPC (minimal, narrow) ----------
 ipcMain.handle('desktop:get-status', () => ({
   version: app.getVersion(),
   serverRunning: serverProcess !== null,
   port: serverPort,
   platform: process.platform,
 }));
+
+ipcMain.handle('desktop:copy-text', (_event, text) => {
+  if (!validateClipboardText(text)) {
+    return false;
+  }
+  try {
+    clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+});
 
 // ---------- app lifecycle ----------
 if (!app.requestSingleInstanceLock()) {

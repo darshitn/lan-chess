@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Chess } from 'chess.js';
+import { copyToClipboard as clipboardCopy } from '../../services/clipboard.js';
 
 interface PgnFenToolsProps {
   currentFen: string;
@@ -21,31 +22,12 @@ export const PgnFenTools: React.FC<PgnFenToolsProps> = ({
 
   // navigator.clipboard is unavailable on insecure origins (this app is served
   // over plain HTTP on the LAN), so fall back to execCommand.
-  const copyToClipboard = (text: string, label: string) => {
-    const showCopied = () => {
+  const copyToClipboard = async (text: string, label: string) => {
+    const result = await clipboardCopy(text);
+    if (result.success) {
       setCopiedMsg(`Copied ${label} to clipboard!`);
       setTimeout(() => setCopiedMsg(null), 2500);
-    };
-
-    if (navigator.clipboard && window.isSecureContext) {
-      navigator.clipboard.writeText(text).then(showCopied).catch(() => {
-        setErrorMsg(`Could not copy ${label} to clipboard.`);
-      });
-      return;
-    }
-
-    try {
-      const el = document.createElement('textarea');
-      el.value = text;
-      el.style.position = 'fixed';
-      el.style.opacity = '0';
-      document.body.appendChild(el);
-      el.select();
-      const success = document.execCommand('copy');
-      document.body.removeChild(el);
-      if (success) showCopied();
-      else setErrorMsg(`Could not copy ${label} to clipboard.`);
-    } catch {
+    } else {
       setErrorMsg(`Could not copy ${label} to clipboard.`);
     }
   };

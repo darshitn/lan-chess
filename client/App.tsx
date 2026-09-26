@@ -14,6 +14,8 @@ import {
 } from '../shared/types.js';
 import { Lobby } from './components/Lobby.js';
 import { Chessboard } from './components/Chessboard.js';
+import { ResponsiveBoardFrame } from './components/ResponsiveBoardFrame.js';
+import { WaitingPanel } from './components/WaitingPanel.js';
 import { PlayerCard } from './components/PlayerCard.js';
 import { MoveHistory } from './components/MoveHistory.js';
 import { ChatPanel } from './components/ChatPanel.js';
@@ -51,6 +53,8 @@ import {
   type SavedGame,
 } from './services/game-history.js';
 import type { BoardTheme, UserPreferences } from './types/preferences.js';
+import { copyToClipboard } from './services/clipboard.js';
+import { getStoredHostUrl, storeHostUrl, preserveHostUrl } from './services/host-url.js';
 
 const PLAYER_STORAGE_KEY = 'lan-chess-player-id';
 
@@ -88,25 +92,6 @@ function buildGamePgn(
   return chess.pgn();
 }
 
-function copyToClipboard(text: string): Promise<boolean> {
-  if (navigator.clipboard && window.isSecureContext) {
-    return navigator.clipboard.writeText(text).then(() => true).catch(() => false);
-  }
-  try {
-    const el = document.createElement('textarea');
-    el.value = text;
-    el.style.position = 'fixed';
-    el.style.opacity = '0';
-    document.body.appendChild(el);
-    el.select();
-    const success = document.execCommand('copy');
-    document.body.removeChild(el);
-    return Promise.resolve(success);
-  } catch {
-    return Promise.resolve(false);
-  }
-}
-
 export function App() {
   const socket = useMemo<Socket<ServerToClientEvents, ClientToServerEvents>>(() => {
     const serverUrl = import.meta.env.VITE_SERVER_URL
@@ -133,7 +118,7 @@ export function App() {
   const [color, setColor] = useState<PlayerColor | null>(null);
   const [role, setRole] = useState<'player' | 'spectator'>('player');
   const [roomCodeInput, setRoomCodeInput] = useState('');
-  const [hostUrl, setHostUrl] = useState<string | null>(null);
+  const [hostUrl, setHostUrl] = useState<string | null>(() => getStoredHostUrl());
   const [error, setError] = useState<string | null>(null);
   const [copiedNotification, setCopiedNotification] = useState<string | null>(null);
 
@@ -275,6 +260,40 @@ export function App() {
     }
   };
 
+  // Fetch server status on mount to populate hostUrl early (and handle fallback ports)
+  useEffect(() => {
+    fetch('/api/status')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && data.lanIp && data.port) {
+          const detected = `http://${data.lanIp}:${data.port}`;
+          setHostUrl((prev) => {
+            const next = preserveHostUrl(prev, detected);
+            storeHostUrl(next);
+            return next;
+          });
+        }
+      })
+      .catch(() => {
+        const devServer = import.meta.env.DEV ? 'http://127.0.0.1:3001' : '';
+        if (devServer) {
+          fetch(`${devServer}/api/status`)
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data) => {
+              if (data && data.lanIp && data.port) {
+                const detected = `http://${data.lanIp}:${data.port}`;
+                setHostUrl((prev) => {
+                  const next = preserveHostUrl(prev, detected);
+                  storeHostUrl(next);
+                  return next;
+                });
+              }
+            })
+            .catch(() => {});
+        }
+      });
+  }, []);
+
   // Socket setup & event listeners
   useEffect(() => {
     const onConnect = () => {
@@ -299,7 +318,13 @@ export function App() {
       storeSessionId(payload.sessionId);
       setColor(payload.playerColor);
       setRole('player');
-      if (payload.hostUrl) setHostUrl(payload.hostUrl);
+      if (payload.hostUrl) {
+        setHostUrl((prev) => {
+          const next = preserveHostUrl(prev, payload.hostUrl);
+          storeHostUrl(next);
+          return next;
+        });
+      }
       setError(null);
       setCurrentView('play');
       // Sync sound tracking to the new game without replaying sounds for
@@ -309,10 +334,17 @@ export function App() {
       setPremove(null);
     };
 
-    const onRoomJoined = (payload: { roomCode: string; playerColor: PlayerColor | null; sessionId: string; role: 'player' | 'spectator' }) => {
+    const onRoomJoined = (payload: { roomCode: string; playerColor: PlayerColor | null; sessionId: string; role: 'player' | 'spectator'; hostUrl?: string | null }) => {
       storeSessionId(payload.sessionId);
       setColor(payload.playerColor);
       setRole(payload.role);
+      if (payload.hostUrl) {
+        setHostUrl((prev) => {
+          const next = preserveHostUrl(prev, payload.hostUrl);
+          storeHostUrl(next);
+          return next;
+        });
+      }
       setError(null);
       setCurrentView('play');
       prevMovesCountRef.current = -1;
@@ -658,8 +690,8 @@ export function App() {
     const shareText = hostUrl
       ? `Join my LAN Chess match!\nRoom Code: ${gameState.roomCode}\nLink: ${hostUrl}`
       : `LAN Chess Room Code: ${gameState.roomCode}`;
-    const success = await copyToClipboard(shareText);
-    if (success) {
+    const result = await copyToClipboard(shareText);
+    if (result.success) {
       setCopiedNotification('Room details copied to clipboard!');
       setTimeout(() => setCopiedNotification(null), 3000);
     }
@@ -897,11 +929,12 @@ export function App() {
   const currentMoveNumber = Math.floor(gameState.moves.length / 2) + 1;
 
   const opponentDisconnected = gameState.message.toLowerCase().includes('disconnected') || gameState.message.toLowerCase().includes('reconnection');
+  const isWaitingRoom = gameState.status === 'waiting' && !opponentDisconnected && !gameState.blackName;
 
   return (
-    <div className="mx-auto min-h-screen max-w-6xl px-3 py-4 sm:px-6 sm:py-6">
+    <div className="mx-auto min-h-screen max-w-6xl px-3 py-2 sm:px-6 sm:py-3.5">
       {/* Top Header Bar */}
-      <header className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+      <header className="mb-2 sm:mb-3 flex flex-wrap items-center justify-between gap-2.5 border-b border-slate-800 pb-2 sm:pb-2.5">
         <div>
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold tracking-[.25em] text-amber-400">
@@ -986,32 +1019,15 @@ export function App() {
         </div>
       )}
 
-      {/* Waiting Room notice */}
-      {gameState.status === 'waiting' && (
-        <section className="mb-4 rounded-xl border border-amber-500/50 bg-amber-400/10 p-4">
+      {/* Waiting Room notice / Reconnection banner */}
+      {gameState.status === 'waiting' && (opponentDisconnected || gameState.blackName) && (
+        <section className="mb-3 rounded-xl border border-amber-500/50 bg-amber-400/10 p-3 text-slate-200">
           <p className="font-bold text-amber-300">{gameState.message}</p>
-          {opponentDisconnected ? (
-            <p className="mt-1 text-sm text-slate-300">
-              Waiting for opponent to reconnect (30 second grace period)...
-            </p>
-          ) : gameState.blackName ? (
-            <p className="mt-1 text-sm text-slate-300">
-              Match will resume as soon as the player reconnects.
-            </p>
-          ) : (
-            <div className="mt-2 flex flex-wrap items-center gap-3">
-              <span className="text-sm text-slate-300">
-                Share room code <b className="font-mono text-base tracking-widest text-white">{gameState.roomCode}</b> on your local network.
-              </span>
-              <button
-                type="button"
-                onClick={handleShareRoom}
-                className="action-button action-secondary text-xs"
-              >
-                Copy Room Invite
-              </button>
-            </div>
-          )}
+          <p className="mt-1 text-xs text-slate-300">
+            {opponentDisconnected
+              ? 'Waiting for opponent to reconnect (30 second grace period)...'
+              : 'Match will resume as soon as the player reconnects.'}
+          </p>
         </section>
       )}
 
@@ -1107,11 +1123,22 @@ export function App() {
       )}
 
       {/* Main Grid: Board Column + Sidebar Column */}
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
+      <div className="grid gap-4 lg:gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
+        {/* Waiting Panel: renders at top on mobile (<1024px) and in right sidebar column on desktop (>=1024px) */}
+        {isWaitingRoom && (
+          <div className="order-1 lg:order-none lg:col-start-2 lg:row-start-1">
+            <WaitingPanel roomCode={gameState.roomCode} hostUrl={hostUrl} />
+          </div>
+        )}
+
         {/* Left Column: Board & Player Panels */}
-        <section className="mx-auto w-full max-w-[46rem]">
+        <section
+          className={`mx-auto w-full max-w-[46rem] ${
+            isWaitingRoom ? 'order-2 lg:order-none lg:col-start-1 lg:row-start-1 lg:row-span-2' : ''
+          }`}
+        >
           {/* Top Player Card */}
-          <div className="mb-2">
+          <div className="mb-1.5 sm:mb-2">
             <PlayerCard
               name={topSeat === 'w' ? gameState.whiteName : (gameState.blackName ?? 'Black')}
               color={topSeat}
@@ -1126,7 +1153,7 @@ export function App() {
 
           {/* Status banner */}
           <div
-            className="mb-2 flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/90 px-3 py-2 text-xs"
+            className="mb-1.5 sm:mb-2 flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/90 px-3 py-1.5 text-xs"
             role="status"
             aria-live="polite"
           >
@@ -1145,25 +1172,27 @@ export function App() {
             <span className="font-mono text-slate-400">Move {currentMoveNumber}</span>
           </div>
 
-          {/* Interactive Chessboard */}
-          <Chessboard
-            chess={chess}
-            flipped={flipped}
-            selectedSquare={selectedSquare}
-            legalTargets={legalTargets}
-            lastMove={lastMove}
-            isInteractive={canMove || canPremove}
-            premove={premove}
-            theme={activeTheme}
-            pieceSet={preferences.pieceSet}
-            highlightStyle={preferences.highlightStyle}
-            boardSettings={preferences.boardSettings}
-            onSquareClick={handleSquareClick}
-            onPieceDrop={handlePieceDrop}
-          />
+          {/* Interactive Chessboard wrapped in ResponsiveBoardFrame */}
+          <ResponsiveBoardFrame>
+            <Chessboard
+              chess={chess}
+              flipped={flipped}
+              selectedSquare={selectedSquare}
+              legalTargets={legalTargets}
+              lastMove={lastMove}
+              isInteractive={canMove || canPremove}
+              premove={premove}
+              theme={activeTheme}
+              pieceSet={preferences.pieceSet}
+              highlightStyle={preferences.highlightStyle}
+              boardSettings={preferences.boardSettings}
+              onSquareClick={handleSquareClick}
+              onPieceDrop={handlePieceDrop}
+            />
+          </ResponsiveBoardFrame>
 
           {/* Bottom Player Card */}
-          <div className="mt-2">
+          <div className="mt-1.5 sm:mt-2">
             <PlayerCard
               name={bottomSeat === 'w' ? gameState.whiteName : (gameState.blackName ?? 'Black')}
               color={bottomSeat}
@@ -1224,7 +1253,11 @@ export function App() {
         </section>
 
         {/* Right Column: Move History & Room Chat */}
-        <aside className="space-y-4">
+        <aside
+          className={`space-y-3 lg:max-h-[calc(100dvh-5.5rem)] lg:overflow-y-auto lg:pr-1 ${
+            isWaitingRoom ? 'order-3 lg:order-none lg:col-start-2 lg:row-start-2' : ''
+          }`}
+        >
           <MoveHistory moves={gameState.moves} />
           <ChatPanel
             messages={gameState.chatMessages}

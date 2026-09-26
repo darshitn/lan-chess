@@ -10,6 +10,7 @@ const {
   isAllowedNavigation,
   isSafeExternalUrl,
   resolveIconPath,
+  validateClipboardText,
 } = desktopUtils;
 
 describe('desktop-utils: isValidPort', () => {
@@ -170,6 +171,34 @@ describe('desktop-utils: pickPort', () => {
     } finally {
       await new Promise<void>((resolve) => blocker.close(() => resolve()));
     }
+  });
+});
+
+describe('desktop-utils: validateClipboardText', () => {
+  it('accepts valid string within length limit', () => {
+    expect(validateClipboardText('http://192.168.1.71:3001')).toBe(true);
+    expect(validateClipboardText('Room code: UY3J')).toBe(true);
+  });
+
+  it('rejects non-string values', () => {
+    expect(validateClipboardText(null)).toBe(false);
+    expect(validateClipboardText(undefined)).toBe(false);
+    expect(validateClipboardText(12345)).toBe(false);
+    expect(validateClipboardText({ text: 'copy' })).toBe(false);
+    expect(validateClipboardText(['hello'])).toBe(false);
+  });
+
+  it('rejects empty strings', () => {
+    expect(validateClipboardText('')).toBe(false);
+  });
+
+  it('rejects strings exceeding maximum length', () => {
+    const smallMax = 10;
+    expect(validateClipboardText('1234567890', smallMax)).toBe(true);
+    expect(validateClipboardText('12345678901', smallMax)).toBe(false);
+
+    const hugeText = 'a'.repeat(5001);
+    expect(validateClipboardText(hugeText)).toBe(false);
   });
 });
 

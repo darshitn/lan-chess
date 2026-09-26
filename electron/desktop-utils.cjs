@@ -158,6 +158,20 @@ function resolveIconPath(candidates, existsFn = existsSync) {
   return null;
 }
 
+/**
+ * Validates clipboard text before IPC writing.
+ * Requires non-empty string within allowed maximum length.
+ *
+ * @param {unknown} text
+ * @param {number} [maxLength=5000]
+ * @returns {boolean}
+ */
+function validateClipboardText(text, maxLength = 5000) {
+  if (typeof text !== 'string') return false;
+  if (text.length === 0 || text.length > maxLength) return false;
+  return true;
+}
+
 module.exports = {
   pickPort,
   isValidPort,
@@ -165,5 +179,6 @@ module.exports = {
   isAllowedNavigation,
   isSafeExternalUrl,
   resolveIconPath,
+  validateClipboardText,
 };
 

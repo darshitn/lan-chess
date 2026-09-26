@@ -9,4 +9,10 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('desktop', {
   platform: process.platform,
   getStatus: () => ipcRenderer.invoke('desktop:get-status'),
+  copyText: (text) => {
+    if (typeof text !== 'string' || text.length === 0 || text.length > 5000) {
+      return Promise.resolve(false);
+    }
+    return ipcRenderer.invoke('desktop:copy-text', text);
+  },
 });

@@ -9,6 +9,7 @@ import type {
 } from '../../types/preferences.js';
 import type { GameResult, PlayerColor, PromotionPiece } from '../../../shared/types.js';
 import { Chessboard } from '../Chessboard.js';
+import { ResponsiveBoardFrame } from '../ResponsiveBoardFrame.js';
 import { PlayerCard } from '../PlayerCard.js';
 import { MoveHistory } from '../MoveHistory.js';
 import { PromotionModal } from '../PromotionModal.js';
@@ -317,9 +318,9 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
   const moveNumber = Math.floor(gameState.moves.length / 2) + 1;
 
   return (
-    <div className="mx-auto min-h-screen max-w-6xl px-3 py-4 sm:px-6 sm:py-6">
+    <div className="mx-auto min-h-screen max-w-6xl px-3 py-2 sm:px-6 sm:py-3.5">
       {/* Top Header Bar */}
-      <header className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+      <header className="mb-2 sm:mb-3 flex flex-wrap items-center justify-between gap-2.5 border-b border-slate-800 pb-2 sm:pb-2.5">
         <div>
           <div className="flex items-center gap-2">
             <span className="rounded bg-amber-400/10 border border-amber-500/30 px-2 py-0.5 text-xs font-bold uppercase tracking-wider text-amber-300">
@@ -410,11 +411,11 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
       )}
 
       {/* Main Grid: Board Column + Move History Column */}
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
+      <div className="grid gap-4 lg:gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
         {/* Left Column: Board & Player Panels */}
         <section className="mx-auto w-full max-w-[46rem]">
           {/* Top Player Card */}
-          <div className="mb-2">
+          <div className="mb-1.5 sm:mb-2">
             <PlayerCard
               name={topName}
               color={topColor}
@@ -428,7 +429,7 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
 
           {/* Status banner */}
           <div
-            className="mb-2 flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/90 px-3 py-2 text-xs"
+            className="mb-1.5 sm:mb-2 flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/90 px-3 py-1.5 text-xs"
             role="status"
             aria-live="polite"
           >
@@ -457,25 +458,27 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
             <span className="font-mono text-slate-400">Move {moveNumber}</span>
           </div>
 
-          {/* Interactive Chessboard */}
-          <Chessboard
-            chess={chess}
-            flipped={flipped}
-            selectedSquare={selectedSquare}
-            legalTargets={legalTargets}
-            lastMove={lastMove}
-            isInteractive={canMove || canPremove}
-            premove={premove}
-            theme={theme}
-            pieceSet={pieceSet}
-            highlightStyle={highlightStyle}
-            boardSettings={boardSettings}
-            onSquareClick={handleSquareClick}
-            onPieceDrop={handlePieceDrop}
-          />
+          {/* Interactive Chessboard wrapped in ResponsiveBoardFrame */}
+          <ResponsiveBoardFrame>
+            <Chessboard
+              chess={chess}
+              flipped={flipped}
+              selectedSquare={selectedSquare}
+              legalTargets={legalTargets}
+              lastMove={lastMove}
+              isInteractive={canMove || canPremove}
+              premove={premove}
+              theme={theme}
+              pieceSet={pieceSet}
+              highlightStyle={highlightStyle}
+              boardSettings={boardSettings}
+              onSquareClick={handleSquareClick}
+              onPieceDrop={handlePieceDrop}
+            />
+          </ResponsiveBoardFrame>
 
           {/* Bottom Player Card */}
-          <div className="mt-2">
+          <div className="mt-1.5 sm:mt-2">
             <PlayerCard
               name={bottomName}
               color={bottomColor}
@@ -489,7 +492,7 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
 
           {/* Resign action button */}
           {gameState.status === 'active' && (
-            <div className="mt-3 flex gap-2">
+            <div className="mt-2 sm:mt-3 flex gap-2">
               <button
                 type="button"
                 onClick={handleResign}
@@ -502,7 +505,7 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
         </section>
 
         {/* Right Column: Move History & Game Information */}
-        <aside className="space-y-4">
+        <aside className="space-y-3 lg:max-h-[calc(100dvh-5.5rem)] lg:overflow-y-auto lg:pr-1">
           <MoveHistory moves={gameState.moves} />
 
           {/* Offline Information Box */}

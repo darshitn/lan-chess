@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Chess, type Move, type Square } from 'chess.js';
 import type { BoardDisplaySettings, BoardTheme, HighlightStyleId, PieceSetId } from '../../types/preferences.js';
 import { Chessboard } from '../Chessboard.js';
+import { ResponsiveBoardFrame } from '../ResponsiveBoardFrame.js';
 
 export interface PuzzleRecord {
   id: string;
@@ -286,9 +287,9 @@ export const PuzzlePlayer: React.FC<PuzzlePlayerProps> = ({
   }
 
   return (
-    <div className="mx-auto min-h-screen max-w-6xl px-3 py-4 sm:px-6 sm:py-6">
+    <div className="mx-auto min-h-screen max-w-6xl px-3 py-2 sm:px-6 sm:py-3.5">
       {/* Top Header */}
-      <header className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+      <header className="mb-2 sm:mb-3 flex flex-wrap items-center justify-between gap-2.5 border-b border-slate-800 pb-2 sm:pb-2.5">
         <div>
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold uppercase tracking-[.25em] text-amber-400">
@@ -330,7 +331,7 @@ export const PuzzlePlayer: React.FC<PuzzlePlayerProps> = ({
       </header>
 
       {/* Difficulty filter */}
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+      <div className="mb-2 sm:mb-3 flex flex-wrap items-center gap-2">
         <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Difficulty:</span>
         {DIFFICULTY_FILTERS.map((d) => (
           <button
@@ -350,13 +351,13 @@ export const PuzzlePlayer: React.FC<PuzzlePlayerProps> = ({
       </div>
 
       {/* Main Grid */}
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
+      <div className="grid gap-4 lg:gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
         {/* Board column */}
         <section className="mx-auto w-full max-w-[46rem]">
           {/* Status message */}
           {statusMsg && (
             <div
-              className={`mb-3 rounded-lg p-3 text-xs font-bold text-center ${
+              className={`mb-2 sm:mb-3 rounded-lg p-2.5 sm:p-3 text-xs font-bold text-center ${
                 isSolved
                   ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-800 animate-pulse'
                   : 'bg-rose-950/80 text-rose-300 border border-rose-800'
@@ -367,22 +368,24 @@ export const PuzzlePlayer: React.FC<PuzzlePlayerProps> = ({
             </div>
           )}
 
-          <Chessboard
-            chess={chess}
-            flipped={puzzleFlipped}
-            selectedSquare={selectedSquare}
-            legalTargets={legalTargets}
-            lastMove={null}
-            isInteractive={!isSolved && !waitingReply}
-            theme={theme}
-            pieceSet={pieceSet}
-            highlightStyle={highlightStyle}
-            boardSettings={boardSettings}
-            onSquareClick={handleSquareClick}
-            onPieceDrop={handleMoveAttempt}
-          />
+          <ResponsiveBoardFrame>
+            <Chessboard
+              chess={chess}
+              flipped={puzzleFlipped}
+              selectedSquare={selectedSquare}
+              legalTargets={legalTargets}
+              lastMove={null}
+              isInteractive={!isSolved && !waitingReply}
+              theme={theme}
+              pieceSet={pieceSet}
+              highlightStyle={highlightStyle}
+              boardSettings={boardSettings}
+              onSquareClick={handleSquareClick}
+              onPieceDrop={handleMoveAttempt}
+            />
+          </ResponsiveBoardFrame>
 
-          <div className="mt-4 flex gap-2">
+          <div className="mt-2 sm:mt-3 flex gap-2">
             <button
               type="button"
               onClick={() => setShowHint((h) => !h)}
@@ -410,7 +413,7 @@ export const PuzzlePlayer: React.FC<PuzzlePlayerProps> = ({
         </section>
 
         {/* Puzzle Sidebar */}
-        <aside className="space-y-4">
+        <aside className="space-y-3 lg:max-h-[calc(100dvh-5.5rem)] lg:overflow-y-auto lg:pr-1">
           <div className="panel">
             <h3 className="text-xs font-bold uppercase tracking-wider text-amber-400">Puzzle Objective</h3>
             <p className="mt-2 text-sm text-slate-200">

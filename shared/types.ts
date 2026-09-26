@@ -47,7 +47,7 @@ export interface GameState {
   spectatorCount: number;
 }
 export interface RoomCreated { roomCode: string; playerColor: PlayerColor; sessionId: string; hostUrl: string | null; }
-export interface RoomJoined { roomCode: string; playerColor: PlayerColor | null; sessionId: string; role: 'player' | 'spectator'; }
+export interface RoomJoined { roomCode: string; playerColor: PlayerColor | null; sessionId: string; role: 'player' | 'spectator'; hostUrl?: string | null; }
 export interface ConnectionStatusPayload { status: ConnectionStatus; message?: string; }
 
 export interface ClientToServerEvents {

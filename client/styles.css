@@ -274,10 +274,17 @@ button:hover:not(:disabled) { transform: translateY(-1px); }
 
 /* Board container shell */
 .board-shell {
+  width: 100%;
+  box-sizing: border-box;
   border-radius: .9rem;
   padding: .45rem;
   background: linear-gradient(135deg, #475569, #1e293b);
   box-shadow: 0 22px 55px rgb(0 0 0 / .4);
+}
+.responsive-board-frame {
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
 }
 .board-shell-noborder { padding: 0 !important; background: transparent !important; }
 .board-shell-noshadow { box-shadow: none !important; }
@@ -288,6 +295,8 @@ button:hover:not(:disabled) { transform: translateY(-1px); }
   position: relative;
   display: grid;
   grid-template-columns: repeat(8, minmax(0, 1fr));
+  grid-template-rows: repeat(8, minmax(0, 1fr));
+  container-type: inline-size;
   overflow: hidden;
   border: 1px solid rgba(0, 0, 0, 0.3);
   border-radius: .55rem;
@@ -319,10 +328,12 @@ button:hover:not(:disabled) { transform: translateY(-1px); }
   display: grid;
   place-items: center;
   min-width: 0;
+  min-height: 0;
   padding: 0;
   border: 0;
   aspect-ratio: 1;
   cursor: pointer;
+  overflow: hidden;
   transition: transform 120ms ease, background-color 120ms ease;
 }
 .square:hover { transform: scale(0.99); }
@@ -332,7 +343,7 @@ button:hover:not(:disabled) { transform: translateY(-1px); }
   position: relative;
   z-index: 2;
   font-family: "Segoe UI Symbol", "Arial Unicode MS", serif;
-  font-size: clamp(2rem, 8.5vw, 5.25rem);
+  font-size: clamp(1.25rem, 8.8cqi, 4.5rem);
   line-height: 1;
   user-select: none;
   cursor: grab;
@@ -647,4 +658,29 @@ button:hover:not(:disabled) { transform: translateY(-1px); }
   .legal-capture { border-width: 3px; }
   .rank-label { top: .18rem; left: .2rem; }
   .file-label { right: .2rem; bottom: .15rem; }
+}
+
+/* Compact layout adjustments for short desktop viewports (e.g. 768p and 720p) */
+@media (min-width: 1024px) and (max-height: 820px) {
+  .player-card {
+    padding: 0.5rem 0.75rem;
+  }
+  .move-list {
+    max-height: 10.5rem;
+  }
+  .chat-panel {
+    max-height: 9rem;
+  }
+}
+
+@media (min-width: 1024px) and (max-height: 740px) {
+  .player-card {
+    padding: 0.375rem 0.625rem;
+  }
+  .move-list {
+    max-height: 8rem;
+  }
+  .chat-panel {
+    max-height: 7rem;
+  }
 }
