@@ -1,6 +1,30 @@
-import { spawn } from 'node:child_process';
+import assert from 'node:assert';
+import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+
+function readSystemClipboard() {
+  if (process.platform === 'win32') {
+    const raw = execFileSync('powershell.exe', ['-NoProfile', '-Command', 'Get-Clipboard -Raw'], {
+      encoding: 'utf8',
+      timeout: 5000,
+    });
+    return raw.replace(/\r\n$/, '').replace(/\n$/, '');
+  }
+  if (process.platform === 'darwin') {
+    return execFileSync('pbpaste', { encoding: 'utf8' });
+  }
+  return execFileSync('xclip', ['-selection', 'clipboard', '-o'], { encoding: 'utf8' });
+}
+
+function setSystemClipboard(val) {
+  if (process.platform === 'win32') {
+    execFileSync('powershell.exe', ['-NoProfile', '-Command', `Set-Clipboard -Value '${val}'`], {
+      encoding: 'utf8',
+      timeout: 5000,
+    });
+  }
+}
 
 const INSTALLED_EXE = process.env.INSTALLED_EXE || path.join(
   process.env.LOCALAPPDATA || '',
@@ -183,7 +207,8 @@ async function main() {
       throw new Error(`Invalid or non-LAN URL in Electron: ${lanUrl}`);
     }
 
-    // 4. Test Copy Link via native desktop IPC
+    // 4. Test Copy Link via native desktop IPC and verify native OS clipboard
+    setSystemClipboard('SENTINEL_BEFORE_COPY_LINK');
     await client.evaluate(`
       const copyLinkBtn = Array.from(document.querySelectorAll("button")).find(b => b.innerText.trim() === "Copy Link");
       if (copyLinkBtn) copyLinkBtn.click();
@@ -192,11 +217,15 @@ async function main() {
 
     const linkStatusText = await client.evaluate('document.querySelector("[role=\'status\']")?.innerText');
     console.log(`Copy Link feedback in Electron (role="status"): "${linkStatusText}"`);
-    if (!linkStatusText?.includes('LAN link copied')) {
-      throw new Error(`Expected 'LAN link copied' feedback, got: "${linkStatusText}"`);
-    }
+    assert.ok(linkStatusText?.includes('LAN link copied'), `Expected 'LAN link copied' feedback, got: "${linkStatusText}"`);
 
-    // 5. Test Copy Full Invite via native desktop IPC
+    const linkClipboard = readSystemClipboard();
+    console.log(`Native system clipboard after Copy Link: "${linkClipboard}"`);
+    assert.strictEqual(linkClipboard, lanUrl, `Native clipboard content "${linkClipboard}" does not equal displayed LAN URL "${lanUrl}"`);
+    console.log('✓ Verified native OS clipboard matches displayed LAN URL exactly.');
+
+    // 5. Test Copy Full Invite via native desktop IPC and verify native OS clipboard
+    setSystemClipboard('SENTINEL_BEFORE_COPY_INVITE');
     await client.evaluate(`
       const copyFullBtn = Array.from(document.querySelectorAll("button")).find(b => b.innerText.trim() === "Copy Full Invite");
       if (copyFullBtn) copyFullBtn.click();
@@ -205,9 +234,13 @@ async function main() {
 
     const inviteStatusText = await client.evaluate('document.querySelector("[role=\'status\']")?.innerText');
     console.log(`Copy Full Invite feedback in Electron (role="status"): "${inviteStatusText}"`);
-    if (!inviteStatusText?.includes('Invite copied')) {
-      throw new Error(`Expected 'Invite copied' feedback, got: "${inviteStatusText}"`);
-    }
+    assert.ok(inviteStatusText?.includes('Invite copied'), `Expected 'Invite copied' feedback, got: "${inviteStatusText}"`);
+
+    const inviteClipboard = readSystemClipboard();
+    console.log(`Native system clipboard after Copy Full Invite:\n${inviteClipboard}`);
+    assert.ok(inviteClipboard.includes(lanUrl), `Native clipboard invite text does not contain exact LAN URL "${lanUrl}"`);
+    assert.ok(inviteClipboard.includes(roomCode), `Native clipboard invite text does not contain room code "${roomCode}"`);
+    console.log('✓ Verified native OS clipboard contains both exact LAN URL and room code.');
 
     // 6. Visual verification at 1280x800 in installed Electron
     const metrics1280x800 = await client.evaluate(`
@@ -253,7 +286,7 @@ async function main() {
 
     await client.screenshot('installed_electron_1280x800.png');
 
-    // 7. Visual verification at smaller effective viewport (1024x680 / Windows scaling)
+    // 7. Visual and scroll verification at smaller effective viewport (1024x680 / Windows scaling)
     console.log('Testing installed Electron at smaller effective viewport (1024x680)...');
     await client.setViewport(1024, 680);
     await sleep(600);
@@ -264,6 +297,7 @@ async function main() {
         const bRect = board ? board.getBoundingClientRect() : null;
         const bottomCard = document.querySelectorAll(".player-card")[1];
         const bcRect = bottomCard ? bottomCard.getBoundingClientRect() : null;
+        const root = document.documentElement;
         return {
           boardW: bRect ? bRect.width : 0,
           boardH: bRect ? bRect.height : 0,
@@ -271,7 +305,12 @@ async function main() {
           bottomCardBottom: bcRect ? bcRect.bottom : 0,
           viewportH: window.innerHeight,
           viewportW: window.innerWidth,
-          hasHScroll: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+          scrollWidth: root.scrollWidth,
+          clientWidth: root.clientWidth,
+          scrollHeight: root.scrollHeight,
+          clientHeight: root.clientHeight,
+          hasHScroll: root.scrollWidth > root.clientWidth,
+          hasVScroll: root.scrollHeight > root.clientHeight,
         };
       })()
     `);
@@ -281,12 +320,37 @@ async function main() {
       boardBottom: `${Math.round(metricsSmall.boardBottom)}px`,
       bottomCardBottom: `${Math.round(metricsSmall.bottomCardBottom)}px`,
       viewportH: `${metricsSmall.viewportH}px`,
+      scrollWidth: `${metricsSmall.scrollWidth}px`,
+      clientWidth: `${metricsSmall.clientWidth}px`,
+      scrollHeight: `${metricsSmall.scrollHeight}px`,
+      clientHeight: `${metricsSmall.clientHeight}px`,
       horizontalScroll: metricsSmall.hasHScroll,
+      verticalScroll: metricsSmall.hasVScroll,
     });
 
-    if (metricsSmall.hasHScroll) {
-      throw new Error('Horizontal scrollbar detected in installed Electron at 1024x680!');
-    }
+    assert.strictEqual(metricsSmall.hasHScroll, false, 'Horizontal overflow detected at 1024x680!');
+    assert.strictEqual(metricsSmall.hasVScroll, true, 'Expected vertical scrolling to be needed at 1024x680!');
+    console.log('✓ Verified 1024x680 has no horizontal overflow and requires vertical scrolling as expected.');
+
+    // Scroll to bottom and verify all controls (e.g. bottom player card) remain reachable by scrolling
+    const scrollReachability = await client.evaluate(`
+      (() => {
+        window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'instant' });
+        const bottomCard = document.querySelectorAll(".player-card")[1];
+        const bcRect = bottomCard ? bottomCard.getBoundingClientRect() : null;
+        const inView = bcRect ? (bcRect.top < window.innerHeight && bcRect.bottom > 0) : false;
+        return {
+          scrollY: window.scrollY,
+          bottomCardInView: inView,
+          bottomCardRect: bcRect ? { top: Math.round(bcRect.top), bottom: Math.round(bcRect.bottom) } : null,
+        };
+      })()
+    `);
+
+    console.log('1024x680 scroll reachability check:', scrollReachability);
+    assert.ok(scrollReachability.scrollY > 0, 'Page failed to scroll vertically at 1024x680');
+    assert.ok(scrollReachability.bottomCardInView, 'Bottom player card not reachable by vertical scrolling at 1024x680');
+    console.log('✓ Verified all bottom controls remain fully reachable by scrolling at 1024x680.');
 
     await client.screenshot('installed_electron_small_viewport.png');
 

@@ -2,6 +2,33 @@
 
 All notable changes to LAN Chess are documented here.
 
+## [1.1.1] — 2026-09-26
+
+### Fixed — LAN Invitation & Host Link Visibility
+- Prominently display the full host LAN URL (e.g. `http://192.168.1.71:3001`), 4-character room code, and 3-step connection instructions in the waiting panel.
+- Remote users are explicitly directed to connect to the host's actual LAN IP rather than `localhost` or `127.0.0.1`.
+- Added advisory guidance regarding client isolation on public and university Wi-Fi networks.
+- Desktop layout places the invitation panel in the right sidebar column on viewports ≥1024px, preserving full board and player card visibility.
+
+### Fixed — Multi-Tier Reliable Clipboard Actions
+- Introduced resilient multi-tier copy mechanism for "Copy Link" and "Copy Full Invite":
+  1. Desktop native IPC bridge via Electron preload (`window.desktop.copyText`) backed by `electron.clipboard.writeText` with safe 5,000-character payload length bounds.
+  2. Modern browser `navigator.clipboard.writeText` with permission rejection fallback.
+  3. Off-screen `<textarea>` `document.execCommand('copy')` fallback for insecure HTTP / LAN origins and older browsers.
+- "Copy Link" copies the exact LAN URL; "Copy Full Invite" copies a structured message with the room code, LAN URL, and Wi-Fi instructions.
+- Added accessible `role="status"` live region announcements for copy success ("LAN link copied", "Invite copied") and clear manual-selection guidance if copying is denied.
+
+### Fixed — Responsive Chessboard & Viewport Layout
+- Wrapped the chessboard in `ResponsiveBoardFrame` with strict 8-row grid containment (`grid-template-rows: repeat(8, minmax(0, 1fr))`) and container-query piece sizing.
+- Eliminated rank 1 piece and coordinate clipping across all board themes and piece sets.
+- Square sizing dynamically adapts to both viewport width and viewport height, keeping the board and bottom player card above the fold on standard desktop viewports (1280×800 and 1366×768) without vertical page overflow.
+- Preserved zero horizontal overflow on compact viewports (1024×680) with smooth vertical scrolling to access lower controls.
+
+### Tests & Tooling
+- Test suite expanded from 153 → 184 tests across 17 test files (added unit tests for invite service, clipboard service, responsive board sizing, desktop preload security, and acceptance scripts).
+- Acceptance script `scripts/test-acceptance.mjs` made portable with dynamic Chrome path detection and ignored output directories.
+- Strengthened installed Electron acceptance test `scripts/test-installed-electron.mjs` with native OS clipboard verification for both copy actions and scroll reachability assertions at 1024×680.
+
 ## [1.1.0] — 2026-09-15
 
 ### Added — Play vs Computer (offline)

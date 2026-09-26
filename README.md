@@ -1,11 +1,13 @@
-# LAN Chess — v1.1.0
+# LAN Chess — v1.1.1
 
 LAN Chess is a local-network multiplayer chess game built with React, Vite, Express, Socket.IO, and chess.js — no external chess service required. Play over LAN with friends, or play offline against the built-in Stockfish engine.
 
 ## Features
 
 ### Play — LAN Multiplayer
-- Real-time LAN multiplayer (rooms, room codes, LAN URL sharing)
+- Real-time LAN multiplayer with visible LAN invitation: prominent room code, complete host LAN URL (e.g., `http://192.168.1.71:3001`), and clear 3-step connection instructions ("On another device connected to the same Wi-Fi, open this address and enter the room code"); never tells remote users to open localhost or 127.0.0.1.
+- Resilient multi-tier clipboard copy: "Copy Link" and "Copy Full Invite" buttons backed by an Electron desktop IPC bridge (`desktop.copyText`), browser Clipboard API, and off-screen textarea fallback with accessible live-region status feedback.
+- Responsive chessboard layout: `ResponsiveBoardFrame` with strict 8-row grid containment and container-query piece sizing eliminates rank 1 clipping, keeps the board and bottom player card above the fold on 1280×800 / 1366×768 desktop displays, and supports compact viewports (1024×680) with zero horizontal overflow and smooth vertical scrolling.
 - Server-authoritative rules, turns, clocks, and results — the client never decides game state
 - 10 time controls grouped by speed with **Fischer increments** (server-credited per move):
   - 🔥 Bullet: 1+0, 1+1, 2+1
@@ -50,7 +52,7 @@ LAN Chess is a local-network multiplayer chess game built with React, Vite, Expr
 - **Backend:** Node.js + Express + Socket.IO (in-memory authoritative state)
 - **Rules engine:** chess.js (validated on both sides; the server is authoritative)
 - **Engine:** Stockfish (WASM build from `stockfish.js`) in a Web Worker with a strict search lifecycle
-- **Tests:** Vitest (153 tests across 12 test files — server, client, desktop security, offline engine & controller)
+- **Tests:** Vitest (184 tests across 17 test files — server, client, desktop security, offline engine & controller)
 
 ## Architecture
 
@@ -92,7 +94,7 @@ For detailed desktop architecture, see [DESKTOP_APP.md](DESKTOP_APP.md).
 | Script | What it does |
 | --- | --- |
 | `npm run dev` | Concurrent dev server + client with hot reload |
-| `npm test` | Vitest test suite (153 tests across 12 test files) |
+| `npm test` | Vitest test suite (184 tests across 17 test files) |
 | `npm run typecheck` | `tsc --noEmit` over the whole project |
 | `npm run build` | Typecheck, then client + server production build |
 | `npm run desktop:assets` | Stage bundled server and static client for Electron |
