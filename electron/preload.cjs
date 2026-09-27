@@ -15,4 +15,19 @@ contextBridge.exposeInMainWorld('desktop', {
     }
     return ipcRenderer.invoke('desktop:copy-text', text);
   },
+  // In-app updater bridge
+  getUpdateStatus: () => ipcRenderer.invoke('desktop:updater-get-status'),
+  checkForUpdates: () => ipcRenderer.invoke('desktop:updater-check'),
+  quitAndInstall: () => ipcRenderer.invoke('desktop:updater-quit-and-install'),
+  setGameActive: (active) => {
+    ipcRenderer.send('desktop:updater-set-game-active', Boolean(active));
+  },
+  onUpdateStatus: (callback) => {
+    if (typeof callback !== 'function') return () => {};
+    const listener = (_event, status) => callback(status);
+    ipcRenderer.on('desktop:updater-status-changed', listener);
+    return () => {
+      ipcRenderer.removeListener('desktop:updater-status-changed', listener);
+    };
+  },
 });

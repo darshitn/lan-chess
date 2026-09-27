@@ -1,7 +1,7 @@
 {
   "name": "lan-chess",
   "private": true,
-  "version": "1.1.1",
+  "version": "1.2.0",
   "main": "electron/main.cjs",
   "type": "module",
   "description": "",
@@ -23,6 +23,7 @@
   "dependencies": {
     "@vitejs/plugin-react": "^6.1.1",
     "chess.js": "^1.4.0",
+    "electron-updater": "^6.8.9",
     "express": "^5.2.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
@@ -50,6 +51,11 @@
     "appId": "com.darshitn.lanchess",
     "productName": "LAN Chess",
     "copyright": "Copyright © 2026 LAN Chess",
+    "publish": {
+      "provider": "github",
+      "owner": "darshitn",
+      "repo": "lan-chess"
+    },
     "directories": {
       "output": "release",
       "buildResources": "build"

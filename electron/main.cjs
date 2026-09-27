@@ -19,6 +19,7 @@ const {
   resolveIconPath,
   validateClipboardText,
 } = require('./desktop-utils.cjs');
+const { DesktopUpdater } = require('./updater.cjs');
 
 const PREFERRED_PORT = 3001;
 const SERVER_READY_TIMEOUT_MS = 15000;
@@ -26,6 +27,7 @@ const SERVER_READY_TIMEOUT_MS = 15000;
 let serverProcess = null;
 let serverPort = null;
 let mainWindow = null;
+let desktopUpdater = null;
 let quitting = false;
 
 const isDev = !app.isPackaged || process.env.LANCHESS_DEV === '1';
@@ -252,7 +254,11 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    desktopUpdater = null;
   });
+
+  desktopUpdater = new DesktopUpdater(mainWindow, { isDev, logger: { log, error: console.error } });
+  desktopUpdater.init();
 
   mainWindow.loadURL(target);
 }

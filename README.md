@@ -89,6 +89,12 @@ npm run electron:build   # build and generate the Windows NSIS installer
 ```
 For detailed desktop architecture, see [DESKTOP_APP.md](DESKTOP_APP.md).
 
+#### In-App Updates
+The desktop app features background update checks via `electron-updater` and GitHub Releases, complete with download progress, differential blockmap transfers, and a user-controlled restart action. To prevent match disruption, update restarts are strictly locked out during active LAN or computer games.
+
+> [!NOTE]
+> **Bootstrapping Note for v1.1.0 / v1.1.1 Users**: Earlier versions (v1.1.0 and v1.1.1) did not bundle the in-app updater client. Existing users need one manual installer upgrade to v1.2.0 to bootstrap automated in-app updates. Local preferences, themes, and game archives are preserved across upgrades.
+
 ## Scripts
 
 | Script | What it does |

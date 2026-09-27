@@ -100,3 +100,46 @@ export const SOCKET_EVENTS = {
   GAME_ERROR: 'game-error',
   CONNECTION_STATUS: 'connection-status',
 } as const;
+
+// ---------- Desktop Updater Types ----------
+export type UpdateStatusState =
+  | 'idle'
+  | 'checking'
+  | 'available'
+  | 'not-available'
+  | 'downloading'
+  | 'downloaded'
+  | 'error';
+
+export interface UpdateInfoPayload {
+  version: string;
+  releaseDate?: string;
+  releaseNotes?: string | null;
+}
+
+export interface UpdateProgressPayload {
+  percent: number;
+  bytesPerSecond: number;
+  transferred: number;
+  total: number;
+}
+
+export interface UpdateStatusPayload {
+  status: UpdateStatusState;
+  info: UpdateInfoPayload | null;
+  progress: UpdateProgressPayload | null;
+  error: string | null;
+  checkedAt: number | null;
+}
+
+export interface UpdateCheckResult {
+  success: boolean;
+  status: UpdateStatusState;
+  info?: UpdateInfoPayload | null;
+  error?: string | null;
+}
+
+export interface UpdateInstallResult {
+  success: boolean;
+  message?: string;
+}
