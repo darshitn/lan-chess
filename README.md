@@ -83,6 +83,13 @@ npm start            # serves the built app on http://0.0.0.0:3001
 The server prints the LAN URL (e.g. `http://192.168.1.25:3001`) — share it with anyone on the same network. Players can also join with the 4-character room code at any instance's URL.
 
 ### Desktop Application (Windows)
+
+Download the installer from the [v1.2.0 Release](https://github.com/darshitn/lan-chess/releases/tag/v1.2.0) ([`LAN-Chess-Setup-1.2.0.exe`](https://github.com/darshitn/lan-chess/releases/download/v1.2.0/LAN-Chess-Setup-1.2.0.exe)).
+
+> [!NOTE]
+> - **Upgrading from v1.1.x**: Earlier versions (v1.1.0 and v1.1.1) did not bundle the in-app updater client. Existing users need one manual installation of `LAN-Chess-Setup-1.2.0.exe` to bootstrap automated in-app updates. Local preferences, themes, and game history are preserved across upgrades.
+> - **Publisher Warning**: The Windows installer is self-packaged and not signed with a commercial certificate. Windows SmartScreen may show an "Unknown Publisher" warning; click **More info** and then **Run anyway** to proceed.
+
 ```bash
 npm run electron:dev     # build and launch the Electron desktop shell
 npm run electron:build   # build and generate the Windows NSIS installer
@@ -90,10 +97,7 @@ npm run electron:build   # build and generate the Windows NSIS installer
 For detailed desktop architecture, see [DESKTOP_APP.md](DESKTOP_APP.md).
 
 #### In-App Updates
-The desktop app features background update checks via `electron-updater` and GitHub Releases, with download progress, support for differential transfers when available, and a user-controlled restart action. To prevent match disruption, update restarts are locked out during active LAN or computer games, including multiplayer reconnection pauses.
-
-> [!NOTE]
-> **Bootstrapping Note for v1.1.0 / v1.1.1 Users**: Earlier versions (v1.1.0 and v1.1.1) did not bundle the in-app updater client. Existing users need one manual installer upgrade to v1.2.0 to bootstrap automated in-app updates. Local preferences, themes, and game archives are preserved across upgrades.
+The desktop app features background update checks via `electron-updater` and GitHub Releases, with download progress, support for differential transfers when available, and a user-controlled restart action. To prevent match disruption, update restarts are locked out during active LAN or computer games, including multiplayer reconnection pauses. Delivery through the live GitHub update feed will be verified on subsequent releases.
 
 ## Scripts
 
