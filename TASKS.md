@@ -11,17 +11,17 @@
 - [x] 1.8 Add unit tests in `electron/updater.test.ts` for IPC payload validation, state transitions, and lockout logic.
 
 ## Milestone 2: UI Integration & Active Game Protection
-- [ ] 2.1 Create `client/services/desktop-updater.ts` to manage subscription, state dispatch, and web fallbacks.
-- [ ] 2.2 Wire `setGameActive` in `client/App.tsx` whenever `gameState.status === 'active'` or `isComputerGameActive === true`.
-- [ ] 2.3 Update `client/components/SettingsModal.tsx` with "Desktop Updates" section:
-  - [ ] Display current version.
-  - [ ] "Check for Updates" trigger button with loading spinner.
-  - [ ] Real-time progress bar for downloading updates with speed & size indicators.
-  - [ ] "Restart & Update Now" button when update is downloaded.
-  - [ ] Lockout feedback when a game is in progress.
-  - [ ] Error alert banner with retry action on failure.
-- [ ] 2.4 Add `client/components/UpdateBanner.tsx` for unobtrusive lobby notification when an update is ready.
-- [ ] 2.5 Add unit tests for `SettingsModal` updater section and `desktop-updater` service.
+- [x] 2.1 Create `client/services/desktop-updater.ts` to manage subscription, state dispatch, and web fallbacks.
+- [x] 2.2 Wire `setGameActive` in `client/App.tsx` whenever `gameState.status === 'active'` or `isComputerGameActive === true`.
+- [x] 2.3 Update `client/components/settings/SettingsModal.tsx` with "Desktop Updates" section:
+  - [x] Display current version.
+  - [x] "Check for Updates" trigger button with loading spinner.
+  - [x] Real-time progress bar for downloading updates with speed & size indicators.
+  - [x] "Restart & Update Now" button when update is downloaded.
+  - [x] Lockout feedback when a game is in progress.
+  - [x] Error alert banner with retry action on failure.
+- [x] 2.4 Add `client/components/UpdateBanner.tsx` for unobtrusive lobby notification when an update is ready.
+- [x] 2.5 Add unit tests for `desktop-updater` service.
 
 ## Milestone 3: Packaging, Differential Blockmaps & Automated Testing
 - [ ] 3.1 Verify `npm run electron:build` produces `latest.yml`, `LAN-Chess-Setup-1.2.0.exe.blockmap`, and installer.

@@ -23,6 +23,8 @@ import { PromotionModal } from './components/PromotionModal.js';
 import { GameOverModal } from './components/GameOverModal.js';
 import { ConfirmDialog } from './components/ConfirmDialog.js';
 import { SettingsModal } from './components/settings/SettingsModal.js';
+import { UpdateBanner } from './components/UpdateBanner.js';
+import { setDesktopGameActive } from './services/desktop-updater.js';
 import { GameReview } from './components/review/GameReview.js';
 import { HistoryView } from './components/review/HistoryView.js';
 import { PracticeBoard } from './components/training/PracticeBoard.js';
@@ -169,6 +171,14 @@ export function App() {
   useEffect(() => {
     applyUiThemeToDom(preferences.uiTheme);
   }, [preferences.uiTheme]);
+
+  const isMultiplayerActive = Boolean(gameState && gameState.status === 'active');
+  const isComputerActive = currentView === 'computer';
+  const isGameActive = isMultiplayerActive || isComputerActive;
+
+  useEffect(() => {
+    setDesktopGameActive(isGameActive);
+  }, [isGameActive]);
 
   const canMove = Boolean(
     gameState &&
@@ -877,6 +887,11 @@ export function App() {
           </div>
         </nav>
 
+        <UpdateBanner
+          isGameActive={isGameActive}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+        />
+
         <Lobby
           playerName={preferences.playerName}
           onNameChange={(name) => handleUpdatePreferences({ ...preferences, playerName: name })}
@@ -908,6 +923,7 @@ export function App() {
           onUpdatePreferences={handleUpdatePreferences}
           onSaveCustomTheme={handleSaveCustomTheme}
           onDeleteCustomTheme={handleDeleteCustomTheme}
+          isGameActive={isGameActive}
         />
       </div>
     );
@@ -1316,6 +1332,7 @@ export function App() {
         onUpdatePreferences={handleUpdatePreferences}
         onSaveCustomTheme={handleSaveCustomTheme}
         onDeleteCustomTheme={handleDeleteCustomTheme}
+        isGameActive={isGameActive}
       />
     </div>
   );

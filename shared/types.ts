@@ -143,3 +143,21 @@ export interface UpdateInstallResult {
   success: boolean;
   message?: string;
 }
+
+export interface DesktopBridge {
+  platform: string;
+  getStatus: () => Promise<{
+    version: string;
+    serverRunning: boolean;
+    port: number | null;
+    platform: string;
+  }>;
+  copyText?: (text: string) => Promise<boolean>;
+  getUpdateStatus?: () => Promise<UpdateStatusPayload>;
+  checkForUpdates?: () => Promise<UpdateCheckResult>;
+  quitAndInstall?: () => Promise<UpdateInstallResult>;
+  setGameActive?: (active: boolean) => void;
+  onUpdateStatus?: (
+    callback: (status: UpdateStatusPayload) => void
+  ) => () => void;
+}

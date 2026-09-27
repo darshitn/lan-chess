@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type {
   BoardTheme,
   HighlightStyleId,
@@ -14,6 +14,16 @@ import {
 import { invalidateSoundVolumeCache } from '../../utils/sound.js';
 import { useModalBehavior } from '../../utils/modal-behavior.js';
 import { CustomBoardBuilder } from '../themes/CustomBoardBuilder.js';
+import type { UpdateStatusPayload } from '../../../shared/types.js';
+import {
+  isDesktopApp,
+  getDesktopUpdateStatus,
+  checkForDesktopUpdates,
+  quitAndInstallDesktopUpdate,
+  subscribeToUpdateStatus,
+  formatBytes,
+  formatSpeed,
+} from '../../services/desktop-updater.js';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -23,6 +33,7 @@ interface SettingsModalProps {
   onUpdatePreferences: (newPrefs: UserPreferences) => void;
   onSaveCustomTheme: (theme: BoardTheme) => void;
   onDeleteCustomTheme: (themeId: string) => void;
+  isGameActive?: boolean;
 }
 
 const PIECE_SETS: Array<{ id: PieceSetId; name: string; preview: string }> = [
@@ -63,10 +74,52 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onUpdatePreferences,
   onSaveCustomTheme,
   onDeleteCustomTheme,
+  isGameActive = false,
 }) => {
-  const [activeTab, setActiveTab] = useState<'appearance' | 'builder' | 'sound' | 'gameplay' | 'analysis'>('appearance');
+  const [activeTab, setActiveTab] = useState<'appearance' | 'builder' | 'sound' | 'gameplay' | 'analysis' | 'updates'>('appearance');
   const [lockedModalNotice, setLockedModalNotice] = useState<string | null>(null);
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatusPayload | null>(null);
+  const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+  const [appVersion, setAppVersion] = useState<string>('1.2.0');
   const modalRef = useModalBehavior(onClose, true, isOpen);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    void getDesktopUpdateStatus().then(setUpdateStatus);
+    if (typeof window !== 'undefined' && window.desktop?.getStatus) {
+      window.desktop.getStatus().then((s) => {
+        if (s?.version) setAppVersion(s.version);
+      }).catch(() => {});
+    }
+    const unsub = subscribeToUpdateStatus((s) => {
+      setUpdateStatus(s);
+      if (s.status !== 'checking') setIsCheckingUpdates(false);
+    });
+    return unsub;
+  }, [isOpen]);
+
+  const handleCheckUpdates = async () => {
+    setIsCheckingUpdates(true);
+    setUpdateError(null);
+    const res = await checkForDesktopUpdates();
+    setIsCheckingUpdates(false);
+    if (!res.success && res.error) {
+      setUpdateError(res.error);
+    }
+  };
+
+  const handleRestartToUpdate = async () => {
+    if (isGameActive) {
+      setUpdateError('Cannot restart while a chess game is active. Please complete or leave your game first.');
+      return;
+    }
+    setUpdateError(null);
+    const res = await quitAndInstallDesktopUpdate();
+    if (!res.success && res.message) {
+      setUpdateError(res.message);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -135,6 +188,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             { id: 'sound', label: '🔊 Sound' },
             { id: 'gameplay', label: '⚙️ Gameplay' },
             { id: 'analysis', label: '🔍 Analysis' },
+            { id: 'updates', label: '🚀 Updates' },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -527,6 +581,141 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </p>
                 <p className="mt-2 text-[11px] text-slate-400">
                   Recommended: Depth 12 gives reliable move evaluations and blunder detection without long waits.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* UPDATES TAB */}
+          {activeTab === 'updates' && (
+            <div className="space-y-6 max-w-lg">
+              <div>
+                <h3 className="text-sm font-bold uppercase tracking-wider text-amber-400">Application Updates</h3>
+                <p className="mt-1 text-xs text-slate-400">
+                  Check for new releases and manage in-app desktop updates.
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-400">Installed Version</p>
+                    <p className="text-sm font-mono font-bold text-white">v{appVersion}</p>
+                  </div>
+                  <span className="rounded-full bg-slate-800 px-2.5 py-1 text-[11px] font-medium text-slate-300">
+                    {isDesktopApp() ? 'Windows Desktop' : 'Web Client'}
+                  </span>
+                </div>
+
+                {/* Update Status Card */}
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-slate-400">Status</p>
+
+                  {/* Idle / Up to date */}
+                  {(!updateStatus || updateStatus.status === 'idle' || updateStatus.status === 'not-available') && !isCheckingUpdates && (
+                    <div className="flex items-center gap-2 text-xs text-emerald-400">
+                      <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                      <span>LAN Chess is up to date.</span>
+                    </div>
+                  )}
+
+                  {/* Checking */}
+                  {(updateStatus?.status === 'checking' || isCheckingUpdates) && (
+                    <div className="flex items-center gap-2 text-xs text-amber-300">
+                      <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
+                      <span>Checking update server...</span>
+                    </div>
+                  )}
+
+                  {/* Available */}
+                  {updateStatus?.status === 'available' && !isCheckingUpdates && (
+                    <div className="flex items-center gap-2 text-xs text-sky-300">
+                      <span className="h-2 w-2 rounded-full bg-sky-400 animate-pulse" />
+                      <span>Version v{updateStatus.info?.version} is available. Starting download...</span>
+                    </div>
+                  )}
+
+                  {/* Downloading with Progress Bar */}
+                  {updateStatus?.status === 'downloading' && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs text-slate-300">
+                        <span className="font-semibold text-sky-300">Downloading update v{updateStatus.info?.version}...</span>
+                        <span className="font-mono">{updateStatus.progress?.percent || 0}%</span>
+                      </div>
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800">
+                        <div
+                          className="h-full bg-gradient-to-r from-sky-500 to-amber-400 transition-all duration-300"
+                          style={{ width: `${updateStatus.progress?.percent || 0}%` }}
+                        />
+                      </div>
+                      {updateStatus.progress && (
+                        <div className="flex justify-between text-[11px] text-slate-400 font-mono">
+                          <span>{formatSpeed(updateStatus.progress.bytesPerSecond)}</span>
+                          <span>
+                            {formatBytes(updateStatus.progress.transferred)} / {formatBytes(updateStatus.progress.total)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Downloaded / Ready to Install */}
+                  {updateStatus?.status === 'downloaded' && (
+                    <div className="rounded-lg border border-emerald-500/40 bg-emerald-950/30 p-3 space-y-2">
+                      <div className="flex items-center gap-2 text-xs font-bold text-emerald-300">
+                        <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                        <span>Update v{updateStatus.info?.version} is ready to install!</span>
+                      </div>
+                      <p className="text-[11px] text-slate-300">
+                        The update has been downloaded and verified via SHA-512 blockmap. Restart to apply.
+                      </p>
+                      {isGameActive ? (
+                        <div className="rounded bg-amber-950/60 p-2 text-[11px] text-amber-300 border border-amber-500/30">
+                          ⚠️ A chess match is currently in progress. Please complete or leave your game before restarting.
+                        </div>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={handleRestartToUpdate}
+                        disabled={isGameActive}
+                        className="action-button action-primary w-full py-2 text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isGameActive ? 'Disabled During Active Game' : 'Restart & Update Now'}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Error State */}
+                  {(updateStatus?.status === 'error' || updateError) && !isCheckingUpdates && (
+                    <div className="rounded-lg border border-rose-500/40 bg-rose-950/30 p-3 space-y-1 text-xs text-rose-200">
+                      <p className="font-bold text-rose-300">Update check failed</p>
+                      <p className="text-[11px] text-rose-200/80">{updateError || updateStatus?.error}</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Action Buttons */}
+                <div className="pt-2 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCheckUpdates}
+                    disabled={isCheckingUpdates || updateStatus?.status === 'downloading'}
+                    className="action-button action-secondary flex-1 py-2 text-xs font-bold disabled:opacity-50"
+                  >
+                    {isCheckingUpdates ? 'Checking...' : 'Check for Updates'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Bootstrapping / Architecture info note */}
+              <div className="rounded-xl border border-slate-800/80 bg-slate-950/40 p-3.5 text-[11px] text-slate-400 space-y-1">
+                <p className="font-bold text-slate-300">ℹ️ About In-App Updates</p>
+                <p>
+                  LAN Chess updates are distributed securely via GitHub Releases using NSIS differential blockmaps.
+                  Updates never restart automatically during a live game.
+                </p>
+                <p className="text-slate-500">
+                  Note: Existing v1.1.0 and v1.1.1 users require one manual upgrade to v1.2.0 to bootstrap this in-app updater.
                 </p>
               </div>
             </div>

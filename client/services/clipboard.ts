@@ -8,16 +8,6 @@
  * 4. Return typed success/failure result.
  */
 
-declare global {
-  interface Window {
-    desktop?: {
-      platform: string;
-      getStatus: () => Promise<{ version: string; serverRunning: boolean; port: number | null; platform: string }>;
-      copyText?: (text: string) => Promise<boolean>;
-    };
-  }
-}
-
 export type ClipboardMethod = 'desktop' | 'navigator' | 'legacy';
 
 export type ClipboardResult =
