@@ -21,7 +21,7 @@ All notable changes to LAN Chess are documented here.
 ### Fixed — Responsive Chessboard & Viewport Layout
 - Wrapped the chessboard in `ResponsiveBoardFrame` with strict 8-row grid containment (`grid-template-rows: repeat(8, minmax(0, 1fr))`) and container-query piece sizing.
 - Eliminated rank 1 piece and coordinate clipping across all board themes and piece sets.
-- Square sizing dynamically adapts to both viewport width and viewport height, keeping the board and bottom player card above the fold on standard desktop viewports (1280×800 and 1366×768) without vertical page overflow.
+- Square sizing dynamically adapts to both viewport width and viewport height, keeping the board and bottom player card above the viewport fold on 1280×800 desktop windows (763px inner height) without horizontal overflow, while vertical scrolling accommodates lower action areas.
 - Preserved zero horizontal overflow on compact viewports (1024×680) with smooth vertical scrolling to access lower controls.
 
 ### Tests & Tooling
