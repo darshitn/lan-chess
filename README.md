@@ -52,7 +52,7 @@ LAN Chess is a local-network multiplayer chess game built with React, Vite, Expr
 - **Backend:** Node.js + Express + Socket.IO (in-memory authoritative state)
 - **Rules engine:** chess.js (validated on both sides; the server is authoritative)
 - **Engine:** Stockfish (WASM build from `stockfish.js`) in a Web Worker with a strict search lifecycle
-- **Tests:** Vitest (207 tests across 19 test files — server, client, desktop security, updater, offline engine & controller)
+- **Tests:** Vitest (216 tests across 19 test files — server, client, desktop security, updater, offline engine & controller)
 
 ## Architecture
 
@@ -90,7 +90,7 @@ npm run electron:build   # build and generate the Windows NSIS installer
 For detailed desktop architecture, see [DESKTOP_APP.md](DESKTOP_APP.md).
 
 #### In-App Updates
-The desktop app features background update checks via `electron-updater` and GitHub Releases, complete with download progress, differential blockmap transfers, and a user-controlled restart action. To prevent match disruption, update restarts are strictly locked out during active LAN or computer games.
+The desktop app features background update checks via `electron-updater` and GitHub Releases, with download progress, support for differential transfers when available, and a user-controlled restart action. To prevent match disruption, update restarts are locked out during active LAN or computer games, including multiplayer reconnection pauses.
 
 > [!NOTE]
 > **Bootstrapping Note for v1.1.0 / v1.1.1 Users**: Earlier versions (v1.1.0 and v1.1.1) did not bundle the in-app updater client. Existing users need one manual installer upgrade to v1.2.0 to bootstrap automated in-app updates. Local preferences, themes, and game archives are preserved across upgrades.
@@ -100,7 +100,7 @@ The desktop app features background update checks via `electron-updater` and Git
 | Script | What it does |
 | --- | --- |
 | `npm run dev` | Concurrent dev server + client with hot reload |
-| `npm test` | Vitest test suite (207 tests across 19 test files) |
+| `npm test` | Vitest test suite (216 tests across 19 test files) |
 | `npm run typecheck` | `tsc --noEmit` over the whole project |
 | `npm run build` | Typecheck, then client + server production build |
 | `npm run desktop:assets` | Stage bundled server and static client for Electron |

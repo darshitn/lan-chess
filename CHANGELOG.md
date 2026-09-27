@@ -13,12 +13,12 @@ All notable changes to LAN Chess are documented here.
 - **Active-Game Lockout Protection**: Update restarts and installer triggers are strictly rejected during active LAN multiplayer or offline computer games to prevent match disruption.
 - Unobtrusive **UpdateBanner** notification surfaced in the lobby when a new release is ready for installation.
 - Graceful offline and network failure handling with sanitized, user-friendly error messages and retry capability.
-- Cryptographic SHA-512 blockmap verification preserved without bypassing or disabling integrity checks.
+- SHA-512 update integrity metadata and NSIS blockmap assets preserved without disabling integrity checks.
 - Documented that existing v1.1.0/v1.1.1 installations require one manual installer upgrade to v1.2.0 to bootstrap in-app updating.
 
 ### Tests & Tooling
-- Test suite expanded from 184 → 207 tests across 19 test files (added `electron/updater.test.ts` and `client/services/desktop-updater.test.ts`).
-- Created automated desktop updater test suite (`scripts/test-updater.mjs`) verifying IPC bridges, active match lockout refusal, offline resilience, and localStorage preservation.
+- Test suite expanded from 184 → 216 tests across 19 test files (added `electron/updater.test.ts` and `client/services/desktop-updater.test.ts`).
+- Created installed-desktop updater checks and an isolated version-to-version update test, covering IPC bridges, active match lockout refusal, offline resilience, and localStorage retention across an update.
 
 ## [1.1.1] — 2026-09-26
 
