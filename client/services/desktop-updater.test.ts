@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { GameState } from '../../shared/types.js';
 import {
   isDesktopApp,
+  isMultiplayerGameActive,
   getDesktopUpdateStatus,
   checkForDesktopUpdates,
   quitAndInstallDesktopUpdate,
@@ -177,6 +179,59 @@ describe('desktop-updater service', () => {
       expect(formatSpeed(0)).toBe('0 B/s');
       expect(formatSpeed(2048)).toBe('2 KB/s');
       expect(formatSpeed(1572864)).toBe('1.5 MB/s');
+    });
+  });
+
+  describe('isMultiplayerGameActive', () => {
+    it('returns false for null gameState', () => {
+      expect(isMultiplayerGameActive(null)).toBe(false);
+    });
+
+    it('returns true when gameState.status is active', () => {
+      const state = {
+        roomCode: 'ABCD',
+        status: 'active',
+        whiteName: 'Alice',
+        blackName: 'Bob',
+        winner: null,
+      } as unknown as GameState;
+      expect(isMultiplayerGameActive(state)).toBe(true);
+    });
+
+    it('returns true when match is paused for reconnection', () => {
+      const pausedState = {
+        roomCode: 'ABCD',
+        status: 'waiting',
+        whiteName: 'Alice',
+        blackName: 'Bob',
+        winner: null,
+        message: 'Bob disconnected. Waiting for reconnection...',
+      } as unknown as GameState;
+      expect(isMultiplayerGameActive(pausedState)).toBe(true);
+    });
+
+    it('returns false when room is waiting for initial opponent to join', () => {
+      const lobbyState = {
+        roomCode: 'ABCD',
+        status: 'waiting',
+        whiteName: 'Alice',
+        blackName: null,
+        winner: null,
+        message: 'Waiting for opponent...',
+      } as unknown as GameState;
+      expect(isMultiplayerGameActive(lobbyState)).toBe(false);
+    });
+
+    it('returns false when match is finished', () => {
+      const finishedState = {
+        roomCode: 'ABCD',
+        status: 'finished',
+        whiteName: 'Alice',
+        blackName: 'Bob',
+        winner: 'w',
+        message: 'Checkmate — White wins.',
+      } as unknown as GameState;
+      expect(isMultiplayerGameActive(finishedState)).toBe(false);
     });
   });
 });

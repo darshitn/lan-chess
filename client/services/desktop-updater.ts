@@ -6,10 +6,30 @@
  */
 
 import type {
+  GameState,
   UpdateStatusPayload,
   UpdateCheckResult,
   UpdateInstallResult,
 } from '../../shared/types.js';
+
+/**
+ * Evaluates whether a multiplayer match is currently in progress, including
+ * matches actively being played or temporarily paused during a player's
+ * reconnection grace period.
+ */
+export function isMultiplayerGameActive(gameState: GameState | null): boolean {
+  if (!gameState) return false;
+  if (gameState.status === 'active') return true;
+  // A match paused for an opponent's reconnection has status 'waiting', but both
+  // player seats are assigned and no winner/termination has occurred yet.
+  if (gameState.status === 'waiting' && gameState.blackName !== null && gameState.winner === null) {
+    return true;
+  }
+  if (gameState.message && gameState.message.toLowerCase().includes('reconnection')) {
+    return true;
+  }
+  return false;
+}
 
 export function isDesktopApp(): boolean {
   return (

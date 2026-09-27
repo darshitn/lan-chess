@@ -24,7 +24,7 @@ import { GameOverModal } from './components/GameOverModal.js';
 import { ConfirmDialog } from './components/ConfirmDialog.js';
 import { SettingsModal } from './components/settings/SettingsModal.js';
 import { UpdateBanner } from './components/UpdateBanner.js';
-import { setDesktopGameActive } from './services/desktop-updater.js';
+import { isMultiplayerGameActive, setDesktopGameActive } from './services/desktop-updater.js';
 import { GameReview } from './components/review/GameReview.js';
 import { HistoryView } from './components/review/HistoryView.js';
 import { PracticeBoard } from './components/training/PracticeBoard.js';
@@ -108,6 +108,7 @@ export function App() {
   const [currentView, setCurrentView] = useState<'play' | 'computer' | 'history' | 'review' | 'practice' | 'puzzles'>('play');
   const [reviewGame, setReviewGame] = useState<SavedGame | null>(null);
   const [computerConfig, setComputerConfig] = useState<ComputerGameConfig | null>(null);
+  const [isComputerGameActive, setIsComputerGameActive] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Preferences & Customization state
@@ -172,8 +173,8 @@ export function App() {
     applyUiThemeToDom(preferences.uiTheme);
   }, [preferences.uiTheme]);
 
-  const isMultiplayerActive = Boolean(gameState && gameState.status === 'active');
-  const isComputerActive = currentView === 'computer';
+  const isMultiplayerActive = isMultiplayerGameActive(gameState);
+  const isComputerActive = currentView === 'computer' && isComputerGameActive;
   const isGameActive = isMultiplayerActive || isComputerActive;
 
   useEffect(() => {
@@ -811,6 +812,7 @@ export function App() {
           setCurrentView('review');
         }}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onGameActiveChange={setIsComputerGameActive}
       />
     );
   }

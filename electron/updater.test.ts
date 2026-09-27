@@ -148,5 +148,100 @@ describe('DesktopUpdater Utilities', () => {
       expect(res.success).toBe(false);
       expect(res.error).toContain('only active in installed desktop builds');
     });
+
+    it('aborts installation if game becomes active between click and execution', async () => {
+      const mockWin = createMockWindow();
+      const mockUpdater = {
+        quitAndInstall: vi.fn(),
+        on: vi.fn(),
+        checkForUpdates: vi.fn(),
+      };
+      const updater = new DesktopUpdater(mockWin as any, {
+        mockUpdater,
+        isDev: false,
+      });
+
+      updater.status.status = 'downloaded';
+      updater.setGameActive(false);
+
+      const res = updater.quitAndInstall();
+      expect(res.success).toBe(true);
+
+      // Game state changes to active before deferred callback runs
+      updater.setGameActive(true);
+
+      // Allow setImmediate to run
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(mockUpdater.quitAndInstall).not.toHaveBeenCalled();
+      expect(updater.status.error).toContain('Cannot restart while a chess game is active or paused for reconnection');
+    });
+
+    it('aborts installation if status changes away from downloaded before execution', async () => {
+      const mockWin = createMockWindow();
+      const mockUpdater = {
+        quitAndInstall: vi.fn(),
+        on: vi.fn(),
+        checkForUpdates: vi.fn(),
+      };
+      const updater = new DesktopUpdater(mockWin as any, {
+        mockUpdater,
+        isDev: false,
+      });
+
+      updater.status.status = 'downloaded';
+      updater.setGameActive(false);
+
+      const res = updater.quitAndInstall();
+      expect(res.success).toBe(true);
+
+      // Status changes to idle/error before deferred callback runs
+      updater.status.status = 'error';
+
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(mockUpdater.quitAndInstall).not.toHaveBeenCalled();
+    });
+
+    it('handles updater error events with sanitization and status broadcast', () => {
+      const mockWin = createMockWindow();
+      const listeners = new Map<string, Function>();
+      const mockUpdater = {
+        quitAndInstall: vi.fn(),
+        on: (evt: string, cb: Function) => listeners.set(evt, cb),
+        checkForUpdates: vi.fn(),
+      };
+      const updater = new DesktopUpdater(mockWin as any, {
+        mockUpdater,
+        isDev: false,
+      });
+      updater.init();
+
+      const onError = listeners.get('error');
+      expect(onError).toBeDefined();
+
+      onError!(new Error('net::ERR_INTERNET_DISCONNECTED'));
+      expect(updater.status.status).toBe('error');
+      expect(updater.status.error).toContain('Unable to reach the update server');
+      expect(mockWin.sentEvents.some((e) => e.data.status === 'error')).toBe(true);
+    });
+
+    it('catches and sanitizes errors thrown in checkForUpdates', async () => {
+      const mockWin = createMockWindow();
+      const mockUpdater = {
+        quitAndInstall: vi.fn(),
+        on: vi.fn(),
+        checkForUpdates: vi.fn().mockRejectedValue(new Error('ETIMEDOUT connection failed')),
+      };
+      const updater = new DesktopUpdater(mockWin as any, {
+        mockUpdater,
+        isDev: false,
+      });
+
+      const res = await updater.checkForUpdates();
+      expect(res.success).toBe(false);
+      expect(res.error).toContain('timed out');
+      expect(updater.status.status).toBe('error');
+    });
   });
 });

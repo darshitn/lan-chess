@@ -45,6 +45,7 @@ interface PlayVsComputerProps {
   onBackToLobby: () => void;
   onReviewGame: (game: SavedGame) => void;
   onOpenSettings: () => void;
+  onGameActiveChange?: (active: boolean) => void;
 }
 
 export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
@@ -57,6 +58,7 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
   onBackToLobby,
   onReviewGame,
   onOpenSettings,
+  onGameActiveChange,
 }) => {
   const [controller, setController] = useState<ComputerGameController | null>(null);
   const [gameState, setGameState] = useState<ComputerGameState | null>(null);
@@ -82,6 +84,7 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
 
     const unsubState = ctrl.subscribeState((state) => {
       setGameState({ ...state });
+      onGameActiveChange?.(state.status === 'active');
     });
 
     const unsubSound = ctrl.subscribeSound((event: GameSoundEvent) => {
@@ -101,6 +104,7 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
       unsubSound();
       ctrl.dispose();
       service.dispose();
+      onGameActiveChange?.(false);
     };
   }, [initialConfig]);
 

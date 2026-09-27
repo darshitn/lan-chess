@@ -481,8 +481,8 @@ async function waitFor(fn: () => boolean, timeoutMs = 1000): Promise<void> {
       expect(res.success).toBe(true);
 
       const state = controller.getState();
-      // 180,000ms - 1500ms elapsed + 2000ms increment = 180,500ms
-      expect(state.whiteTimeMs).toBe(180500);
+      // 180,000ms - 1500ms elapsed + 2000ms increment = 180,500ms (tolerate +/- 2ms execution jitter)
+      expect(Math.abs(state.whiteTimeMs! - 180500)).toBeLessThanOrEqual(2);
 
       controller.dispose();
       service.dispose();

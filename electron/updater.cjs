@@ -58,7 +58,7 @@ function canQuitAndInstall(isGameActive, currentStatus) {
   if (isGameActive) {
     return {
       allowed: false,
-      reason: 'Cannot restart while a chess game is active. Please finish or leave the game first.',
+      reason: 'Cannot restart while a chess game is active or paused for reconnection. Please finish or leave the game first.',
     };
   }
   if (!currentStatus || currentStatus.status !== 'downloaded') {
@@ -75,6 +75,7 @@ class DesktopUpdater {
     this.mainWindow = mainWindow;
     this.isGameActive = false;
     this.status = createInitialStatus();
+    this.options = options;
     this.mockUpdater = options.mockUpdater || null;
     this.updater = this.mockUpdater || getAutoUpdater();
     this.isDev = options.isDev !== undefined ? options.isDev : (!app.isPackaged || process.env.LANCHESS_DEV === '1');
@@ -105,7 +106,7 @@ class DesktopUpdater {
     this.status.error = null;
     this.broadcastStatus();
 
-    // Dev environment guard unless mock updater is provided
+    // Dev environment guard unless mock updater is provided or test updater is requested
     if (this.isDev && !this.mockUpdater && process.env.LANCHESS_TEST_UPDATER !== '1') {
       this.status.status = 'idle';
       this.status.checkedAt = Date.now();
@@ -147,6 +148,7 @@ class DesktopUpdater {
   }
 
   quitAndInstall() {
+    // Initial precondition check on invocation
     const check = canQuitAndInstall(this.isGameActive, this.status);
     if (!check.allowed) {
       return { success: false, message: check.reason };
@@ -154,9 +156,23 @@ class DesktopUpdater {
 
     try {
       if (this.updater && typeof this.updater.quitAndInstall === 'function') {
-        // isSilent = false (shows progress), isForceRunAfter = true (relaunches app)
+        // Defer execution so the IPC response resolves cleanly, but RECHECK game
+        // and updater status immediately before calling the installer to ensure no
+        // state change occurred (e.g. game started or entered reconnection pause).
         setImmediate(() => {
-          this.updater.quitAndInstall(false, true);
+          const deferredCheck = canQuitAndInstall(this.isGameActive, this.status);
+          if (!deferredCheck.allowed) {
+            this.logger.warn?.('Aborting update install: game state changed before execution:', deferredCheck.reason);
+            this.status.error = deferredCheck.reason;
+            this.broadcastStatus();
+            return;
+          }
+          const isSilent = this.options.isSilent !== undefined ? this.options.isSilent : true;
+          const isForceRunAfter =
+            this.options.isForceRunAfter !== undefined
+              ? this.options.isForceRunAfter
+              : process.env.LANCHESS_FORCE_RUN_AFTER !== '0';
+          this.updater.quitAndInstall(isSilent, isForceRunAfter);
         });
       }
       return { success: true };
@@ -166,6 +182,8 @@ class DesktopUpdater {
   }
 
   registerIpc() {
+    if (!ipcMain || typeof ipcMain.handle !== 'function') return;
+
     ipcMain.handle('desktop:updater-get-status', () => {
       return this.getStatus();
     });
@@ -192,6 +210,17 @@ class DesktopUpdater {
     if (!this.updater) return;
 
     try {
+      if (this.options.installDirectory || process.env.LANCHESS_INSTALL_DIR) {
+        this.updater.installDirectory = this.options.installDirectory || process.env.LANCHESS_INSTALL_DIR;
+      }
+      const feedUrl = this.options.feedUrl || process.env.LANCHESS_UPDATE_FEED_URL;
+      if (feedUrl && typeof this.updater.setFeedURL === 'function') {
+        this.updater.setFeedURL({
+          provider: 'generic',
+          url: feedUrl,
+        });
+      }
+
       this.updater.autoDownload = true;
       this.updater.autoInstallOnAppQuit = false;
 
