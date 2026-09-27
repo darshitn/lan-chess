@@ -2,6 +2,24 @@
 
 All notable changes to LAN Chess are documented here.
 
+## [1.2.0] — 2026-09-27
+
+### Added — Windows In-App Updater (electron-updater & NSIS)
+- Integrated `electron-updater` configured with GitHub Releases distribution (`provider: "github"`, `owner: "darshitn"`, `repo: "lan-chess"`).
+- Background update check executed automatically on desktop application launch (non-blocking).
+- "Check for updates" manual control integrated into the **Settings** modal under the new **Updates** tab.
+- Download progress visualization displaying percentage, transferred/total bytes, and download speed.
+- User-controlled **"Restart & Update Now"** action when an update is downloaded and verified.
+- **Active-Game Lockout Protection**: Update restarts and installer triggers are strictly rejected during active LAN multiplayer or offline computer games to prevent match disruption.
+- Unobtrusive **UpdateBanner** notification surfaced in the lobby when a new release is ready for installation.
+- Graceful offline and network failure handling with sanitized, user-friendly error messages and retry capability.
+- Cryptographic SHA-512 blockmap verification preserved without bypassing or disabling integrity checks.
+- Documented that existing v1.1.0/v1.1.1 installations require one manual installer upgrade to v1.2.0 to bootstrap in-app updating.
+
+### Tests & Tooling
+- Test suite expanded from 184 → 207 tests across 19 test files (added `electron/updater.test.ts` and `client/services/desktop-updater.test.ts`).
+- Created automated desktop updater test suite (`scripts/test-updater.mjs`) verifying IPC bridges, active match lockout refusal, offline resilience, and localStorage preservation.
+
 ## [1.1.1] — 2026-09-26
 
 ### Fixed — LAN Invitation & Host Link Visibility

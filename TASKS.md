@@ -24,15 +24,15 @@
 - [x] 2.5 Add unit tests for `desktop-updater` service.
 
 ## Milestone 3: Packaging, Differential Blockmaps & Automated Testing
-- [ ] 3.1 Verify `npm run electron:build` produces `latest.yml`, `LAN-Chess-Setup-1.2.0.exe.blockmap`, and installer.
-- [ ] 3.2 Build automated test script `scripts/test-updater.mjs` verifying:
-  - [ ] Status query and manual check API.
-  - [ ] Rejection of update restart when game is active.
-  - [ ] Graceful handling of offline/network failure states.
-  - [ ] Local storage data preservation across simulated install.
-- [ ] 3.3 Execute `scripts/test-updater.mjs` against built app.
+- [x] 3.1 Verify `npm run electron:build` produces `latest.yml`, `LAN-Chess-Setup-1.2.0.exe.blockmap`, and installer.
+- [x] 3.2 Build automated test script `scripts/test-updater.mjs` verifying:
+  - [x] Status query and manual check API.
+  - [x] Rejection of update restart when game is active.
+  - [x] Graceful handling of offline/network failure states.
+  - [x] Local storage data preservation across simulated install.
+- [x] 3.3 Execute `scripts/test-updater.mjs` against built app.
 
 ## Milestone 4: Verification, Documentation & Final Commit
-- [ ] 4.1 Run full verification: `npm test`, `npm run typecheck`, `npm run build`, `npm audit --omit=dev`, `npm audit`, `git diff --check`.
-- [ ] 4.2 Update `README.md` and `CHANGELOG.md` for v1.2.0 with in-app updater details and bootstrapping instructions.
-- [ ] 4.3 Verify clean working tree and commit milestone changes locally.
+- [x] 4.1 Run full verification: `npm test`, `npm run typecheck`, `npm run build`, `npm audit --omit=dev`, `npm audit`, `git diff --check`.
+- [x] 4.2 Update `README.md` and `CHANGELOG.md` for v1.2.0 with in-app updater details and bootstrapping instructions.
+- [x] 4.3 Verify clean working tree and commit milestone changes locally.

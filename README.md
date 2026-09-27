@@ -1,4 +1,4 @@
-# LAN Chess — v1.1.1
+# LAN Chess — v1.2.0
 
 LAN Chess is a local-network multiplayer chess game built with React, Vite, Express, Socket.IO, and chess.js — no external chess service required. Play over LAN with friends, or play offline against the built-in Stockfish engine.
 
@@ -52,7 +52,7 @@ LAN Chess is a local-network multiplayer chess game built with React, Vite, Expr
 - **Backend:** Node.js + Express + Socket.IO (in-memory authoritative state)
 - **Rules engine:** chess.js (validated on both sides; the server is authoritative)
 - **Engine:** Stockfish (WASM build from `stockfish.js`) in a Web Worker with a strict search lifecycle
-- **Tests:** Vitest (184 tests across 17 test files — server, client, desktop security, offline engine & controller)
+- **Tests:** Vitest (207 tests across 19 test files — server, client, desktop security, updater, offline engine & controller)
 
 ## Architecture
 
@@ -100,7 +100,7 @@ The desktop app features background update checks via `electron-updater` and Git
 | Script | What it does |
 | --- | --- |
 | `npm run dev` | Concurrent dev server + client with hot reload |
-| `npm test` | Vitest test suite (184 tests across 17 test files) |
+| `npm test` | Vitest test suite (207 tests across 19 test files) |
 | `npm run typecheck` | `tsc --noEmit` over the whole project |
 | `npm run build` | Typecheck, then client + server production build |
 | `npm run desktop:assets` | Stage bundled server and static client for Electron |

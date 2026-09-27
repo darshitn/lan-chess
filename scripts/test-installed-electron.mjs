@@ -109,7 +109,7 @@ async function sleep(ms) {
 }
 
 async function main() {
-  console.log('=== Testing Installed Electron App (v1.1.1) ===');
+  console.log('=== Testing Installed Electron App ===');
   console.log(`Executable: ${INSTALLED_EXE}`);
   if (!fs.existsSync(INSTALLED_EXE)) {
     throw new Error(`Installed executable not found at: ${INSTALLED_EXE}`);
