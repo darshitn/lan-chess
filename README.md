@@ -40,6 +40,14 @@ LAN Chess is a local-network multiplayer chess game built with React, Vite, Expr
 - Completed games saved to history with valid PGN headers and full post-game review (Stockfish analysis, replay, eval graph)
 - Board flip, themes, sounds, premoves, promotion dialog, and all chess.js game-ending rules fully preserved
 
+### Board Sizing & Focus Mode (LAN & Offline Play)
+- **Live Adjustable Size**: Adjust board dimensions dynamically during active games via an accessible slider, +/- step buttons, or a direct corner drag handle positioned cleanly outside the squares.
+- **Smart "Fit Screen" Default**: Preserves automatic viewport-height and column-width fitting as the default across phones, laptops, and ultra-wide displays.
+- **"Focus Board" Desktop View**: Collapses the right-hand sidebar into an accessible slide-over drawer, allowing the board to expand significantly across the screen while keeping clocks, turn status, and game controls in clear view.
+- **Unread Chat Badge**: Incoming messages in Focus mode trigger an unread badge on the drawer toggle so communication is never missed.
+- **Fullscreen Support**: One-click fullscreen toggle via the standard Fullscreen API with Escape key restoration.
+- **Zero Network Impact & Clamping**: Board size preferences are saved strictly to local storage without affecting network traffic, PGN, or game state, and automatically clamp to screen width to prevent horizontal overflow.
+
 ### Review & train (all offline, client-side)
 - Game history (last 50 games) with automatic saving and PGN/FEN tools (real PGN headers: players, result, termination)
 - Post-game review with replay controls, keyboard navigation, and evaluation graph
@@ -55,7 +63,7 @@ LAN Chess is a local-network multiplayer chess game built with React, Vite, Expr
 - **Backend:** Node.js + Express + Socket.IO (in-memory authoritative state)
 - **Rules engine:** chess.js (validated on both sides; the server is authoritative)
 - **Engine:** Stockfish (WASM build from `stockfish.js`) in a Web Worker with a strict search lifecycle
-- **Tests:** Vitest (238 tests across 21 test files — server, client, desktop security, updater, offline engine & controller)
+- **Tests:** Vitest (251 tests across 23 test files — server, client, desktop security, updater, offline engine & controller, board sizing & controls)
 
 ## Architecture
 
@@ -108,7 +116,7 @@ The desktop app features background update checks via `electron-updater` and Git
 | Script | What it does |
 | --- | --- |
 | `npm run dev` | Concurrent dev server + client with hot reload |
-| `npm test` | Vitest test suite (216 tests across 19 test files) |
+| `npm test` | Vitest test suite (251 tests across 23 test files) |
 | `npm run typecheck` | `tsc --noEmit` over the whole project |
 | `npm run build` | Typecheck, then client + server production build |
 | `npm run desktop:assets` | Stage bundled server and static client for Electron |

@@ -15,13 +15,22 @@ export interface BoardSizeOptions {
   minBoardSize?: number;
   maxBoardSize?: number;
   safeBottomSpacing?: number;
+  sizeMode?: 'fit' | 'custom';
+  customSize?: number;
+  focusBoard?: boolean;
 }
 
 export const DEFAULT_MIN_BOARD_SIZE = 280;
 export const DEFAULT_MAX_BOARD_SIZE = 736;
+export const FOCUS_MAX_BOARD_SIZE = 1200;
 export const DEFAULT_SAFE_BOTTOM_SPACING = 16;
+export const DEFAULT_CUSTOM_BOARD_SIZE = 560;
+export const BOARD_SIZE_STEP = 32;
 
-export function calculateBoardSize(options: BoardSizeOptions): number {
+/**
+ * Computes the optimal board dimension when fitting cleanly to viewport and container.
+ */
+export function calculateFitSize(options: BoardSizeOptions): number {
   const {
     viewportWidth,
     viewportHeight,
@@ -29,7 +38,7 @@ export function calculateBoardSize(options: BoardSizeOptions): number {
     topOverhead,
     bottomOverhead,
     minBoardSize = DEFAULT_MIN_BOARD_SIZE,
-    maxBoardSize = DEFAULT_MAX_BOARD_SIZE,
+    maxBoardSize = options.focusBoard ? FOCUS_MAX_BOARD_SIZE : DEFAULT_MAX_BOARD_SIZE,
     safeBottomSpacing = DEFAULT_SAFE_BOTTOM_SPACING,
   } = options;
 
@@ -54,7 +63,7 @@ export function calculateBoardSize(options: BoardSizeOptions): number {
     targetSize = availableWidth;
   }
 
-  // Cap at maximum design size (e.g. 736px / max-w-[46rem])
+  // Cap at maximum design size (e.g. 736px / max-w-[46rem], or 1200px in focus mode)
   targetSize = Math.min(targetSize, maxBoardSize);
 
   // If viewport is extremely small, permit normal page scrolling instead of shrinking
@@ -67,4 +76,27 @@ export function calculateBoardSize(options: BoardSizeOptions): number {
   }
 
   return Math.floor(targetSize);
+}
+
+export function calculateBoardSize(options: BoardSizeOptions): number {
+  const {
+    sizeMode = 'fit',
+    customSize,
+    containerWidth,
+    minBoardSize = DEFAULT_MIN_BOARD_SIZE,
+  } = options;
+
+  const availableWidth = Math.max(0, containerWidth);
+  const fitSize = calculateFitSize(options);
+
+  if (sizeMode === 'custom' && typeof customSize === 'number' && !Number.isNaN(customSize)) {
+    // Custom size is bounded by minBoardSize and availableWidth to strictly prevent horizontal overflow
+    let target = Math.max(minBoardSize, customSize);
+    if (availableWidth > 0 && availableWidth < target) {
+      target = availableWidth;
+    }
+    return Math.floor(target);
+  }
+
+  return fitSize;
 }

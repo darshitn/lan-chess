@@ -701,3 +701,48 @@ button:hover:not(:disabled) { transform: translateY(-1px); }
     max-height: 7rem;
   }
 }
+
+/* Board Size Slider & Direct Resize Handle */
+.board-size-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: #f59e0b;
+  cursor: pointer;
+  border: 2px solid #0f172a;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  transition: transform 0.1s ease, background-color 0.1s ease;
+}
+
+.board-size-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+  background: #fbbf24;
+}
+
+.board-size-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: #f59e0b;
+  cursor: pointer;
+  border: 2px solid #0f172a;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  transition: transform 0.1s ease, background-color 0.1s ease;
+}
+
+.board-size-slider::-moz-range-thumb:hover {
+  transform: scale(1.15);
+  background: #fbbf24;
+}
+
+.board-resize-handle {
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+.board-resize-handle:hover,
+.board-resize-handle:focus-visible {
+  outline: none;
+  border-color: #f59e0b;
+  transform: scale(1.1);
+}

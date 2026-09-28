@@ -134,4 +134,76 @@ describe('board-sizing: calculateBoardSize', () => {
     // Must not exceed 260px container width, preventing horizontal scrollbars
     expect(size).toBe(260);
   });
+
+  describe('custom size mode & clamping', () => {
+    it('applies custom size when within available container width', () => {
+      const size = calculateBoardSize({
+        viewportWidth: 1280,
+        viewportHeight: 800,
+        containerWidth: 800,
+        ...standardOverheads,
+        sizeMode: 'custom',
+        customSize: 640,
+      });
+      expect(size).toBe(640);
+    });
+
+    it('strictly clamps custom size to available container width to prevent horizontal overflow', () => {
+      const size = calculateBoardSize({
+        viewportWidth: 1280,
+        viewportHeight: 800,
+        containerWidth: 600,
+        ...standardOverheads,
+        sizeMode: 'custom',
+        customSize: 850, // exceeds container width of 600
+      });
+      expect(size).toBe(600);
+      expect(size).toBeLessThanOrEqual(600);
+    });
+
+    it('clamps custom size on mobile phone (390px) to prevent horizontal overflow', () => {
+      const size = calculateBoardSize({
+        viewportWidth: 390,
+        viewportHeight: 844,
+        containerWidth: 358,
+        topOverhead: 120,
+        bottomOverhead: 60,
+        sizeMode: 'custom',
+        customSize: 500, // user attempted to enlarge past phone screen
+      });
+      expect(size).toBe(358);
+      expect(size).toBeLessThanOrEqual(358);
+    });
+
+    it('floors custom size at minBoardSize', () => {
+      const size = calculateBoardSize({
+        viewportWidth: 1280,
+        viewportHeight: 800,
+        containerWidth: 800,
+        ...standardOverheads,
+        sizeMode: 'custom',
+        customSize: 150, // below minBoardSize
+        minBoardSize: 280,
+      });
+      expect(size).toBe(280);
+    });
+  });
+
+  describe('focus board mode', () => {
+    it('allows board to expand past default 736px max up to FOCUS_MAX_BOARD_SIZE in fit mode on large screens', () => {
+      const size = calculateBoardSize({
+        viewportWidth: 1920,
+        viewportHeight: 1200,
+        containerWidth: 1100, // sidebar collapsed in focus mode
+        topOverhead: 140,
+        bottomOverhead: 60,
+        safeBottomSpacing: 16,
+        focusBoard: true,
+      });
+      // availableHeight = 1200 - 140 - 60 - 16 = 984
+      // min(1100, 984) = 984 > 736
+      expect(size).toBe(984);
+      expect(size).toBeGreaterThan(736);
+    });
+  });
 });

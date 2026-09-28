@@ -16,6 +16,8 @@ import { Lobby } from './components/Lobby.js';
 import { Navigation } from './components/Navigation.js';
 import { Chessboard } from './components/Chessboard.js';
 import { ResponsiveBoardFrame } from './components/ResponsiveBoardFrame.js';
+import { BoardControls } from './components/BoardControls.js';
+import { useBoardDisplay } from './services/board-display.js';
 import { WaitingPanel } from './components/WaitingPanel.js';
 import { getRoomCodeFromUrl } from './services/invite.js';
 import { PlayerCard } from './components/PlayerCard.js';
@@ -145,6 +147,32 @@ export function App() {
     return isKnownTimeControl(first) ? first : '3+0';
   });
   const [allowTakebacks, setAllowTakebacks] = useState(true);
+
+  const boardDisplay = useBoardDisplay();
+  const [measuredBoard, setMeasuredBoard] = useState({
+    currentSize: 560,
+    fitSize: 560,
+    maxAllowedWidth: 800,
+  });
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
+  const prevChatCountRef = useRef(0);
+
+  useEffect(() => {
+    if (!gameState) {
+      setUnreadChatCount(0);
+      prevChatCountRef.current = 0;
+      return;
+    }
+    const currentMsgCount = gameState.chatMessages.length;
+    if (boardDisplay.focusBoard && !boardDisplay.isFocusDrawerOpen) {
+      if (currentMsgCount > prevChatCountRef.current) {
+        setUnreadChatCount((prev) => prev + (currentMsgCount - prevChatCountRef.current));
+      }
+    } else {
+      setUnreadChatCount(0);
+    }
+    prevChatCountRef.current = currentMsgCount;
+  }, [gameState?.chatMessages.length, boardDisplay.focusBoard, boardDisplay.isFocusDrawerOpen]);
 
   const prevMovesCountRef = useRef(0);
   const prevStatusRef = useRef<GameState['status']>('waiting');
@@ -1150,9 +1178,13 @@ export function App() {
       )}
 
       {/* Main Grid: Board Column + Sidebar Column */}
-      <div className="grid gap-4 lg:gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
-        {/* Waiting Panel: renders at top on mobile (<1024px) and in right sidebar column on desktop (>=1024px) */}
-        {isWaitingRoom && (
+      <div
+        className={`grid gap-4 lg:gap-6 ${
+          boardDisplay.focusBoard ? 'lg:grid-cols-1' : 'lg:grid-cols-[minmax(0,1fr)_22rem]'
+        } lg:items-start`}
+      >
+        {/* Waiting Panel: in normal layout renders in right column (desktop) or top (mobile) */}
+        {isWaitingRoom && !boardDisplay.focusBoard && (
           <div className="order-1 lg:order-none lg:col-start-2 lg:row-start-1">
             <WaitingPanel roomCode={gameState.roomCode} hostUrl={hostUrl} />
           </div>
@@ -1160,12 +1192,15 @@ export function App() {
 
         {/* Left Column: Board & Player Panels */}
         <section
-          className={`mx-auto w-full max-w-[46rem] ${
-            isWaitingRoom ? 'order-2 lg:order-none lg:col-start-1 lg:row-start-1 lg:row-span-2' : ''
+          className={`mx-auto w-full ${boardDisplay.focusBoard ? 'max-w-none' : 'max-w-[46rem]'} ${
+            isWaitingRoom && !boardDisplay.focusBoard ? 'order-2 lg:order-none lg:col-start-1 lg:row-start-1 lg:row-span-2' : ''
           }`}
         >
           {/* Top Player Card */}
-          <div className="mb-1.5 sm:mb-2">
+          <div
+            className="mx-auto w-full mb-1.5 sm:mb-2"
+            style={{ maxWidth: measuredBoard.currentSize ? `${measuredBoard.currentSize}px` : undefined }}
+          >
             <PlayerCard
               name={topSeat === 'w' ? gameState.whiteName : (gameState.blackName ?? 'Black')}
               color={topSeat}
@@ -1180,7 +1215,8 @@ export function App() {
 
           {/* Status banner */}
           <div
-            className="mb-1.5 sm:mb-2 flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/90 px-3 py-1.5 text-xs"
+            className="mx-auto w-full mb-1.5 sm:mb-2 flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/90 px-3 py-1.5 text-xs"
+            style={{ maxWidth: measuredBoard.currentSize ? `${measuredBoard.currentSize}px` : undefined }}
             role="status"
             aria-live="polite"
           >
@@ -1199,8 +1235,37 @@ export function App() {
             <span className="font-mono text-slate-400">Move {currentMoveNumber}</span>
           </div>
 
+          {/* Board Controls Toolbar */}
+          <div
+            className="mx-auto w-full"
+            style={{ maxWidth: measuredBoard.currentSize ? `${measuredBoard.currentSize}px` : undefined }}
+          >
+            <BoardControls
+              sizeMode={boardDisplay.sizeMode}
+              currentSize={measuredBoard.currentSize}
+              fitSize={measuredBoard.fitSize}
+              maxAllowedWidth={measuredBoard.maxAllowedWidth}
+              focusBoard={boardDisplay.focusBoard}
+              isFullscreen={boardDisplay.isFullscreen}
+              isFullscreenSupported={boardDisplay.isFullscreenSupported}
+              onSetSizeMode={boardDisplay.setSizeMode}
+              onCustomSizeChange={boardDisplay.setCustomSize}
+              onStepSize={(delta) => boardDisplay.stepCustomSize(delta, measuredBoard.currentSize)}
+              onResetToFit={boardDisplay.resetToFit}
+              onToggleFocusBoard={boardDisplay.toggleFocusBoard}
+              onToggleFullscreen={boardDisplay.toggleFullscreen}
+            />
+          </div>
+
           {/* Interactive Chessboard wrapped in ResponsiveBoardFrame */}
-          <ResponsiveBoardFrame>
+          <ResponsiveBoardFrame
+            sizeMode={boardDisplay.sizeMode}
+            customSize={boardDisplay.customSize}
+            focusBoard={boardDisplay.focusBoard}
+            onMeasuredSizeChange={setMeasuredBoard}
+            onResizeCustom={boardDisplay.setCustomSize}
+            showDragHandle={true}
+          >
             <Chessboard
               chess={chess}
               flipped={flipped}
@@ -1219,7 +1284,10 @@ export function App() {
           </ResponsiveBoardFrame>
 
           {/* Bottom Player Card */}
-          <div className="mt-1.5 sm:mt-2">
+          <div
+            className="mx-auto w-full mt-1.5 sm:mt-2"
+            style={{ maxWidth: measuredBoard.currentSize ? `${measuredBoard.currentSize}px` : undefined }}
+          >
             <PlayerCard
               name={bottomSeat === 'w' ? gameState.whiteName : (gameState.blackName ?? 'Black')}
               color={bottomSeat}
@@ -1238,7 +1306,10 @@ export function App() {
 
           {/* Action buttons (Takeback, Draw, Resign) */}
           {role === 'player' && gameState.status === 'active' && (
-            <div className="mt-3 flex gap-2">
+            <div
+              className="mx-auto w-full mt-3 flex gap-2"
+              style={{ maxWidth: measuredBoard.currentSize ? `${measuredBoard.currentSize}px` : undefined }}
+            >
               {gameState.allowTakebacks && (
                 <button
                   type="button"
@@ -1279,12 +1350,35 @@ export function App() {
           )}
         </section>
 
-        {/* Right Column: Move History & Room Chat */}
+        {/* Right Column: Move History & Room Chat (or Slide-over Drawer in Focus Mode) */}
         <aside
-          className={`space-y-3 lg:max-h-[calc(100dvh-5.5rem)] lg:overflow-y-auto lg:pr-1 ${
-            isWaitingRoom ? 'order-3 lg:order-none lg:col-start-2 lg:row-start-2' : ''
-          }`}
+          className={
+            boardDisplay.focusBoard
+              ? `fixed inset-y-0 right-0 z-40 w-88 max-w-[90vw] bg-slate-950/95 border-l border-slate-800 shadow-2xl p-4 overflow-y-auto space-y-3 transition-transform duration-200 backdrop-blur-md ${
+                  boardDisplay.isFocusDrawerOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none'
+                }`
+              : `space-y-3 lg:max-h-[calc(100dvh-5.5rem)] lg:overflow-y-auto lg:pr-1 ${
+                  isWaitingRoom ? 'order-3 lg:order-none lg:col-start-2 lg:row-start-2' : ''
+                }`
+          }
+          aria-label="Room details, move history and chat"
         >
+          {boardDisplay.focusBoard && (
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <span className="font-bold text-sm text-slate-200">Room Details & Chat</span>
+              <button
+                type="button"
+                onClick={boardDisplay.closeFocusDrawer}
+                className="text-slate-400 hover:text-white p-1 rounded hover:bg-slate-800 text-sm font-bold"
+                aria-label="Close sidebar drawer"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+          {isWaitingRoom && (
+            <WaitingPanel roomCode={gameState.roomCode} hostUrl={hostUrl} />
+          )}
           <MoveHistory moves={gameState.moves} />
           <ChatPanel
             messages={gameState.chatMessages}
@@ -1294,6 +1388,35 @@ export function App() {
           />
         </aside>
       </div>
+
+      {/* Floating Drawer Trigger in Focus Board Mode */}
+      {boardDisplay.focusBoard && (
+        <button
+          type="button"
+          onClick={boardDisplay.toggleFocusDrawer}
+          className="action-button action-secondary text-xs flex items-center gap-1.5 fixed bottom-4 right-4 z-30 shadow-lg border-indigo-500/50 bg-slate-900/95 text-indigo-300 hover:bg-slate-800 hover:text-indigo-200"
+          aria-label={boardDisplay.isFocusDrawerOpen ? 'Close sidebar drawer' : 'Open sidebar drawer (chat, moves, room details)'}
+        >
+          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+          </svg>
+          <span>Chat & Moves</span>
+          {unreadChatCount > 0 && (
+            <span className="ml-1 px-1.5 py-0.2 rounded-full bg-amber-500 text-slate-950 font-bold text-[10px]">
+              {unreadChatCount}
+            </span>
+          )}
+        </button>
+      )}
+
+      {/* Backdrop for Focus Drawer */}
+      {boardDisplay.focusBoard && boardDisplay.isFocusDrawerOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/50 backdrop-blur-xs"
+          onClick={boardDisplay.closeFocusDrawer}
+          aria-hidden="true"
+        />
+      )}
 
       {/* Pawn Promotion Modal */}
       {pendingPromotion && color && (

@@ -10,6 +10,8 @@ import type {
 import type { GameResult, PlayerColor, PromotionPiece } from '../../../shared/types.js';
 import { Chessboard } from '../Chessboard.js';
 import { ResponsiveBoardFrame } from '../ResponsiveBoardFrame.js';
+import { BoardControls } from '../BoardControls.js';
+import { useBoardDisplay } from '../../services/board-display.js';
 import { PlayerCard } from '../PlayerCard.js';
 import { MoveHistory } from '../MoveHistory.js';
 import { PromotionModal } from '../PromotionModal.js';
@@ -74,6 +76,13 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
     danger?: boolean;
     action: () => void;
   } | null>(null);
+
+  const boardDisplay = useBoardDisplay();
+  const [measuredBoard, setMeasuredBoard] = useState({
+    currentSize: 560,
+    fitSize: 560,
+    maxAllowedWidth: 800,
+  });
 
   const soundSettingsRef = useRef(soundSettings);
   soundSettingsRef.current = soundSettings;
@@ -418,11 +427,18 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
       )}
 
       {/* Main Grid: Board Column + Move History Column */}
-      <div className="grid gap-4 lg:gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
+      <div
+        className={`grid gap-4 lg:gap-6 ${
+          boardDisplay.focusBoard ? 'lg:grid-cols-1' : 'lg:grid-cols-[minmax(0,1fr)_22rem]'
+        } lg:items-start`}
+      >
         {/* Left Column: Board & Player Panels */}
-        <section className="mx-auto w-full max-w-[46rem]">
+        <section className={`mx-auto w-full ${boardDisplay.focusBoard ? 'max-w-none' : 'max-w-[46rem]'}`}>
           {/* Top Player Card */}
-          <div className="mb-1.5 sm:mb-2">
+          <div
+            className="mx-auto w-full mb-1.5 sm:mb-2"
+            style={{ maxWidth: measuredBoard.currentSize ? `${measuredBoard.currentSize}px` : undefined }}
+          >
             <PlayerCard
               name={topName}
               color={topColor}
@@ -436,7 +452,8 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
 
           {/* Status banner */}
           <div
-            className="mb-1.5 sm:mb-2 flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/90 px-3 py-1.5 text-xs"
+            className="mx-auto w-full mb-1.5 sm:mb-2 flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/90 px-3 py-1.5 text-xs"
+            style={{ maxWidth: measuredBoard.currentSize ? `${measuredBoard.currentSize}px` : undefined }}
             role="status"
             aria-live="polite"
           >
@@ -465,8 +482,37 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
             <span className="font-mono text-slate-400">Move {moveNumber}</span>
           </div>
 
+          {/* Board Controls Toolbar */}
+          <div
+            className="mx-auto w-full"
+            style={{ maxWidth: measuredBoard.currentSize ? `${measuredBoard.currentSize}px` : undefined }}
+          >
+            <BoardControls
+              sizeMode={boardDisplay.sizeMode}
+              currentSize={measuredBoard.currentSize}
+              fitSize={measuredBoard.fitSize}
+              maxAllowedWidth={measuredBoard.maxAllowedWidth}
+              focusBoard={boardDisplay.focusBoard}
+              isFullscreen={boardDisplay.isFullscreen}
+              isFullscreenSupported={boardDisplay.isFullscreenSupported}
+              onSetSizeMode={boardDisplay.setSizeMode}
+              onCustomSizeChange={boardDisplay.setCustomSize}
+              onStepSize={(delta) => boardDisplay.stepCustomSize(delta, measuredBoard.currentSize)}
+              onResetToFit={boardDisplay.resetToFit}
+              onToggleFocusBoard={boardDisplay.toggleFocusBoard}
+              onToggleFullscreen={boardDisplay.toggleFullscreen}
+            />
+          </div>
+
           {/* Interactive Chessboard wrapped in ResponsiveBoardFrame */}
-          <ResponsiveBoardFrame>
+          <ResponsiveBoardFrame
+            sizeMode={boardDisplay.sizeMode}
+            customSize={boardDisplay.customSize}
+            focusBoard={boardDisplay.focusBoard}
+            onMeasuredSizeChange={setMeasuredBoard}
+            onResizeCustom={boardDisplay.setCustomSize}
+            showDragHandle={true}
+          >
             <Chessboard
               chess={chess}
               flipped={flipped}
@@ -485,7 +531,10 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
           </ResponsiveBoardFrame>
 
           {/* Bottom Player Card */}
-          <div className="mt-1.5 sm:mt-2">
+          <div
+            className="mx-auto w-full mt-1.5 sm:mt-2"
+            style={{ maxWidth: measuredBoard.currentSize ? `${measuredBoard.currentSize}px` : undefined }}
+          >
             <PlayerCard
               name={bottomName}
               color={bottomColor}
@@ -499,7 +548,10 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
 
           {/* Resign action button */}
           {gameState.status === 'active' && (
-            <div className="mt-2 sm:mt-3 flex gap-2">
+            <div
+              className="mx-auto w-full mt-2 sm:mt-3 flex gap-2"
+              style={{ maxWidth: measuredBoard.currentSize ? `${measuredBoard.currentSize}px` : undefined }}
+            >
               <button
                 type="button"
                 onClick={handleResign}
@@ -511,8 +563,30 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
           )}
         </section>
 
-        {/* Right Column: Move History & Game Information */}
-        <aside className="space-y-3 lg:max-h-[calc(100dvh-5.5rem)] lg:overflow-y-auto lg:pr-1">
+        {/* Right Column: Move History & Game Information (or Slide-over Drawer in Focus Mode) */}
+        <aside
+          className={
+            boardDisplay.focusBoard
+              ? `fixed inset-y-0 right-0 z-40 w-88 max-w-[90vw] bg-slate-950/95 border-l border-slate-800 shadow-2xl p-4 overflow-y-auto space-y-3 transition-transform duration-200 backdrop-blur-md ${
+                  boardDisplay.isFocusDrawerOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none'
+                }`
+              : 'space-y-3 lg:max-h-[calc(100dvh-5.5rem)] lg:overflow-y-auto lg:pr-1'
+          }
+          aria-label="Move history and computer game details"
+        >
+          {boardDisplay.focusBoard && (
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <span className="font-bold text-sm text-slate-200">Move History & Game Details</span>
+              <button
+                type="button"
+                onClick={boardDisplay.closeFocusDrawer}
+                className="text-slate-400 hover:text-white p-1 rounded hover:bg-slate-800 text-sm font-bold"
+                aria-label="Close sidebar drawer"
+              >
+                ✕
+              </button>
+            </div>
+          )}
           <MoveHistory moves={gameState.moves} />
 
           {/* Offline Information Box */}
@@ -540,6 +614,30 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
           </div>
         </aside>
       </div>
+
+      {/* Floating Drawer Trigger in Focus Board Mode */}
+      {boardDisplay.focusBoard && (
+        <button
+          type="button"
+          onClick={boardDisplay.toggleFocusDrawer}
+          className="action-button action-secondary text-xs flex items-center gap-1.5 fixed bottom-4 right-4 z-30 shadow-lg border-indigo-500/50 bg-slate-900/95 text-indigo-300 hover:bg-slate-800 hover:text-indigo-200"
+          aria-label={boardDisplay.isFocusDrawerOpen ? 'Close move history drawer' : 'Open move history drawer'}
+        >
+          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span>Move History</span>
+        </button>
+      )}
+
+      {/* Backdrop for Focus Drawer */}
+      {boardDisplay.focusBoard && boardDisplay.isFocusDrawerOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/50 backdrop-blur-xs"
+          onClick={boardDisplay.closeFocusDrawer}
+          aria-hidden="true"
+        />
+      )}
 
       {/* Pawn Promotion Modal */}
       {pendingPromotion && (
