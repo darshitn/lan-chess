@@ -1,13 +1,14 @@
-# LAN Chess — v1.2.0
+# LAN Chess — v1.2.1
 
 LAN Chess is a local-network multiplayer chess game built with React, Vite, Express, Socket.IO, and chess.js — no external chess service required. Play over LAN with friends, or play offline against the built-in Stockfish engine.
 
 ## Features
 
 ### Play — LAN Multiplayer
-- Real-time LAN multiplayer with visible LAN invitation: prominent room code, complete host LAN URL (e.g., `http://192.168.1.71:3001`), and clear 3-step connection instructions ("On another device connected to the same Wi-Fi, open this address and enter the room code"); never tells remote users to open localhost or 127.0.0.1.
+- Real-time LAN multiplayer with visible LAN invitation: prominent room code, complete host LAN URL (e.g., `http://192.168.1.71:3001`), interactive **QR code room joining** (`?room=CODE`) that automatically prefills the Join form on scanned mobile devices, and clear 3-step connection instructions; never tells remote users to open localhost or 127.0.0.1.
 - Resilient multi-tier clipboard copy: "Copy Link" and "Copy Full Invite" buttons backed by an Electron desktop IPC bridge (`desktop.copyText`), browser Clipboard API, and off-screen textarea fallback with accessible live-region status feedback.
-- Responsive chessboard layout: `ResponsiveBoardFrame` with strict 8-row grid containment and container-query piece sizing eliminates rank 1 clipping, keeps the board and bottom player card above the fold on 1280×800 / 1366×768 desktop displays, and supports compact viewports (1024×680) with zero horizontal overflow and smooth vertical scrolling.
+- Redesigned homepage & responsive navigation: polished header layout adapting gracefully to desktop and phone screens (390px/360px) without horizontal scrolling, accessible WAI-ARIA horizontal tablist with roving tabindex, and persistent panel mounting preserving form state across mode switches.
+- Mobile touch enhancements: high-contrast, scalable legal-move indicator dots and capture rings for mobile/touch screens (`pointer: coarse`).
 - Server-authoritative rules, turns, clocks, and results — the client never decides game state
 - 10 time controls grouped by speed with **Fischer increments** (server-credited per move):
   - 🔥 Bullet: 1+0, 1+1, 2+1
@@ -29,7 +30,9 @@ LAN Chess is a local-network multiplayer chess game built with React, Vite, Expr
 ### Play — vs Computer (offline)
 - **Play vs Computer** accessible directly from the main lobby — no server required
 - Choose **White, Black, or Random** colour before the game starts
-- Five **difficulty levels** (Beginner → Master) backed by UCI capability probing — no fake Elo labels
+- Five **difficulty levels** (Beginner → Expert) backed by UCI capability probing — no fake Elo labels
+- Natural turn pacing: engine responses are paced realistically according to difficulty and time control, with pacing delays accurately charged to the engine's clock and automatically clamped in low-clock situations to prevent artificial time-outs.
+- Strict cancellation lifecycle: resigning, restarting, or clock expiry immediately cancels running searches and discards delayed engine moves.
 - Engine running in a dedicated Web Worker via the bundled Stockfish WASM binary (same engine used for game review)
 - Full cancellation via **worker termination and replacement**: a cancelled worker is immediately terminated and replaced so stale `bestmove` replies can never leak into subsequent searches
 - Millisecond-precision offline clocks with Fischer increments; moves are rejected after the deadline regardless of interval timing
@@ -52,7 +55,7 @@ LAN Chess is a local-network multiplayer chess game built with React, Vite, Expr
 - **Backend:** Node.js + Express + Socket.IO (in-memory authoritative state)
 - **Rules engine:** chess.js (validated on both sides; the server is authoritative)
 - **Engine:** Stockfish (WASM build from `stockfish.js`) in a Web Worker with a strict search lifecycle
-- **Tests:** Vitest (216 tests across 19 test files — server, client, desktop security, updater, offline engine & controller)
+- **Tests:** Vitest (238 tests across 21 test files — server, client, desktop security, updater, offline engine & controller)
 
 ## Architecture
 
@@ -80,14 +83,15 @@ npm run build        # typecheck + client bundle + server compile
 npm start            # serves the built app on http://0.0.0.0:3001
 ```
 
-The server prints the LAN URL (e.g. `http://192.168.1.25:3001`) — share it with anyone on the same network. Players can also join with the 4-character room code at any instance's URL.
+The server prints the LAN URL (e.g. `http://192.168.1.25:3001`) — share it with anyone on the same network. Players can also join by scanning the room's QR code or entering the 4-character room code at any instance's URL.
 
 ### Desktop Application (Windows)
 
-Download the installer from the [v1.2.0 Release](https://github.com/darshitn/lan-chess/releases/tag/v1.2.0) ([`LAN-Chess-Setup-1.2.0.exe`](https://github.com/darshitn/lan-chess/releases/download/v1.2.0/LAN-Chess-Setup-1.2.0.exe)).
+Download the installer from the [v1.2.1 Release](https://github.com/darshitn/lan-chess/releases/tag/v1.2.1) ([`LAN-Chess-Setup-1.2.1.exe`](https://github.com/darshitn/lan-chess/releases/download/v1.2.1/LAN-Chess-Setup-1.2.1.exe)).
 
 > [!NOTE]
-> - **Upgrading from v1.1.x**: Earlier versions (v1.1.0 and v1.1.1) did not bundle the in-app updater client. Existing users need one manual installation of `LAN-Chess-Setup-1.2.0.exe` to bootstrap automated in-app updates. Local preferences, themes, and game history are preserved across upgrades.
+> - **In-App Updating from v1.2.0**: Existing v1.2.0 installations can receive this update automatically via the in-app updater (check **Settings → Updates**).
+> - **Upgrading from v1.1.x**: Earlier versions (v1.1.0 and v1.1.1) did not bundle the in-app updater client. Users on v1.1.x need one manual installation of the setup installer to enable future automated updates. Local preferences, themes, and game history are preserved across upgrades.
 > - **Publisher Warning**: The Windows installer is self-packaged and not signed with a commercial certificate. Windows SmartScreen may show an "Unknown Publisher" warning; click **More info** and then **Run anyway** to proceed.
 
 ```bash
@@ -97,7 +101,7 @@ npm run electron:build   # build and generate the Windows NSIS installer
 For detailed desktop architecture, see [DESKTOP_APP.md](DESKTOP_APP.md).
 
 #### In-App Updates
-The desktop app features background update checks via `electron-updater` and GitHub Releases, with download progress, support for differential transfers when available, and a user-controlled restart action. To prevent match disruption, update restarts are locked out during active LAN or computer games, including multiplayer reconnection pauses. Delivery through the live GitHub update feed will be verified on subsequent releases.
+The desktop app features background update checks via `electron-updater` and GitHub Releases, with download progress, support for differential transfers when available, and a user-controlled restart action. To prevent match disruption, update restarts are locked out during active LAN or computer games, including multiplayer reconnection pauses. Delivery through the live GitHub update feed is supported starting from v1.2.0 installations.
 
 ## Scripts
 

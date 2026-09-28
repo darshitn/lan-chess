@@ -17,6 +17,7 @@ import { Navigation } from './components/Navigation.js';
 import { Chessboard } from './components/Chessboard.js';
 import { ResponsiveBoardFrame } from './components/ResponsiveBoardFrame.js';
 import { WaitingPanel } from './components/WaitingPanel.js';
+import { getRoomCodeFromUrl } from './services/invite.js';
 import { PlayerCard } from './components/PlayerCard.js';
 import { MoveHistory } from './components/MoveHistory.js';
 import { ChatPanel } from './components/ChatPanel.js';
@@ -96,6 +97,7 @@ function buildGamePgn(
 }
 
 export function App() {
+  const invitedRoomCode = typeof window === 'undefined' ? null : getRoomCodeFromUrl(window.location.search);
   const socket = useMemo<Socket<ServerToClientEvents, ClientToServerEvents>>(() => {
     const serverUrl = import.meta.env.VITE_SERVER_URL
       ? import.meta.env.VITE_SERVER_URL
@@ -121,7 +123,7 @@ export function App() {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [color, setColor] = useState<PlayerColor | null>(null);
   const [role, setRole] = useState<'player' | 'spectator'>('player');
-  const [roomCodeInput, setRoomCodeInput] = useState('');
+  const [roomCodeInput, setRoomCodeInput] = useState(() => invitedRoomCode ?? '');
   const [hostUrl, setHostUrl] = useState<string | null>(() => getStoredHostUrl());
   const [error, setError] = useState<string | null>(null);
   const [copiedNotification, setCopiedNotification] = useState<string | null>(null);
@@ -900,6 +902,7 @@ export function App() {
         />
 
         <Lobby
+          initialMode={invitedRoomCode ? 'join' : undefined}
           playerName={preferences.playerName}
           onNameChange={(name) => handleUpdatePreferences({ ...preferences, playerName: name })}
           roomCode={roomCodeInput}

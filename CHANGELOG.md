@@ -2,6 +2,35 @@
 
 All notable changes to LAN Chess are documented here.
 
+## [1.2.1] — 2026-09-28
+
+### Added — QR Code LAN Match Joining
+- Integrated dynamic QR code generation (`qrcode`) in the Waiting Panel, displaying an interactive high-contrast QR code for host LAN addresses.
+- Scanning the QR code on a second device connected to the same Wi-Fi opens the application with `?room=CODE`, automatically selecting the **Join a LAN game** mode and prefilling the room code for one-tap connection.
+- Graceful fallback when host IP is unavailable or on QR generation errors.
+
+### Added — Lobby Product Redesign & Accessible Navigation
+- Redesigned homepage and navigation into a clean, modern chess interface with responsive view transitions across Play, Archives, Puzzles, and Sandbox.
+- Replaced emoji buttons with platform-independent, crisp SVG icons (`IconBroadcast`, `IconLink`, `IconCpu`, `IconDice`).
+- Declared accessible WAI-ARIA horizontal tablist (`aria-orientation="horizontal"`) with roving `tabindex` and left/right keyboard navigation.
+- Preserved browser vertical page scrolling by deliberately leaving `ArrowUp` and `ArrowDown` unhandled.
+- Maintained persistent mounting for all three mode setup panels (`#panel-create`, `#panel-join`, `#panel-computer`) with native `hidden` attributes, guaranteeing valid `aria-controls` references at all times while preserving form inputs and disclosure state across mode switching.
+- Resolved mobile viewport navigation overflow at 390px and 360px widths with fluid layout.
+
+### Added — Mobile Touch & Legal-Move Visibility
+- Added coarse-pointer media query styles (`@media (pointer: coarse)`) optimizing touch response on mobile chessboards (`touch-action: manipulation`, piece pass-through to square targets).
+- Prominent, high-contrast legal move indicator dots and capture rings scaled for touch screens.
+
+### Added — Natural Computer Turn Pacing & Timing Hardening
+- Implemented human-like turn pacing for offline Stockfish games based on difficulty level and time control (e.g., ~2.4s for Medium 3+2).
+- Pacing delay is charged against the computer's clock rather than pausing time, ensuring Fischer increments and clock settlement remain realistic.
+- Engine clock budget guard: artificial pacing is automatically clamped when the engine's clock drops low, preventing intentional flag-falls.
+- Immediate cancellation: restarting the game, resigning, or timeout immediately invalidates the active search token and cancels pending paced moves.
+
+### Tests & Tooling
+- Test suite expanded from 216 → 238 tests across 21 test files (added `client/components/Lobby.test.tsx`, `client/components/Chessboard.test.tsx`, and expanded `client/services/computer-game-controller.test.ts`, `client/services/invite.test.ts`, `client/components/WaitingPanel.test.tsx`).
+- Created automated Chrome acceptance and verification suite for QR code generation, destination prefilling, 390px viewport integrity, and engine pacing.
+
 ## [1.2.0] — 2026-09-27
 
 ### Added — Windows In-App Updater (electron-updater & NSIS)

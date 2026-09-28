@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { copyToClipboard } from '../services/clipboard.js';
-import { buildFullInviteText, buildLinkInviteText } from '../services/invite.js';
+import { buildFullInviteText, buildLinkInviteText, buildRoomInviteUrl } from '../services/invite.js';
 
 interface WaitingPanelProps {
   roomCode: string;
@@ -8,10 +8,27 @@ interface WaitingPanelProps {
 }
 
 export const WaitingPanel: React.FC<WaitingPanelProps> = ({ roomCode, hostUrl }) => {
+  const inviteUrl = buildRoomInviteUrl(roomCode, hostUrl);
+  const [qrImage, setQrImage] = useState<string | null>(null);
+  const [qrError, setQrError] = useState(false);
   const [feedback, setFeedback] = useState<{
     type: 'success' | 'error';
     message: string;
   } | null>(null);
+
+  useEffect(() => {
+    let current = true;
+    setQrImage(null);
+    setQrError(false);
+    if (inviteUrl) {
+      void import('qrcode').then(({ toDataURL }) =>
+        toDataURL(inviteUrl, { width: 180, margin: 2, errorCorrectionLevel: 'M' })
+      )
+        .then((image) => { if (current) setQrImage(image); })
+        .catch(() => { if (current) setQrError(true); });
+    }
+    return () => { current = false; };
+  }, [inviteUrl]);
 
   const handleCopyLink = async () => {
     if (!hostUrl) {
@@ -59,8 +76,35 @@ export const WaitingPanel: React.FC<WaitingPanelProps> = ({ roomCode, hostUrl })
           </div>
         </div>
         <p className="text-xs text-slate-300">
-          On another device connected to the same Wi-Fi, open this address and enter the room code.
+          On another device connected to the same Wi-Fi, scan the QR code or open this address and enter the room code.
         </p>
+
+        {inviteUrl && (
+          <details className="rounded-lg border border-slate-700 bg-slate-900/90 p-2 sm:self-start">
+            <summary className="cursor-pointer text-xs font-semibold text-amber-300">Scan QR to join</summary>
+            <div className="mt-2 flex flex-col items-center gap-1.5">
+            {qrError ? (
+              <p className="max-w-44 text-center text-xs text-amber-300" role="status">
+                QR unavailable. Share the link and room code below instead.
+              </p>
+            ) : qrImage ? (
+              <img
+                src={qrImage}
+                width="180"
+                height="180"
+                alt={`Scan to open the Join form for room ${roomCode}`}
+                className="rounded bg-white"
+                data-testid="room-invite-qr"
+              />
+            ) : (
+              <div className="flex h-[180px] w-[180px] items-center justify-center text-xs text-slate-400" role="status">
+                Preparing QR code…
+              </div>
+            )}
+            <span className="text-[11px] text-slate-300">Scan to open Join with code {roomCode}</span>
+            </div>
+          </details>
+        )}
 
         <div className="mt-1 flex items-center gap-2">
           <button

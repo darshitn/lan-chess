@@ -45,6 +45,19 @@ export interface ComputerGameState {
 
 export type GameSoundEvent = 'move' | 'capture' | 'check' | 'gameover';
 
+/** A modest human-readable pace; elapsed waiting is charged to the engine's clock. */
+export function getMinimumComputerTurnMs(difficulty: ComputerDifficulty, tc: TimeControl): number {
+  const base: Record<ComputerDifficulty, number> = {
+    beginner: 700,
+    easy: 1100,
+    medium: 1900,
+    hard: 2300,
+    expert: 2700,
+  };
+  const { incrementMs } = parseTimeControlParams(tc);
+  return Math.max(base[difficulty], Math.min(incrementMs, 2000) + 400);
+}
+
 export function parseTimeControlParams(tc: TimeControl): {
   initialMs: number | null;
   incrementMs: number;
@@ -115,13 +128,19 @@ export class ComputerGameController {
   private incrementMs = 0;
   private searchToken = 0;
   private completedGame: SavedGame | null = null;
+  private minimumTurnMs: (difficulty: ComputerDifficulty, tc: TimeControl) => number;
 
   private stateListeners = new Set<(state: ComputerGameState) => void>();
   private soundListeners = new Set<(event: GameSoundEvent) => void>();
   private finishListeners = new Set<(game: SavedGame) => void>();
 
-  constructor(playerService: ComputerPlayerService, initialConfig: ComputerGameConfig) {
+  constructor(
+    playerService: ComputerPlayerService,
+    initialConfig: ComputerGameConfig,
+    options: { minimumTurnMs?: (difficulty: ComputerDifficulty, tc: TimeControl) => number } = {}
+  ) {
     this.playerService = playerService;
+    this.minimumTurnMs = options.minimumTurnMs ?? (() => 0);
     this.config = { ...initialConfig };
     this.chess = new Chess();
 
@@ -348,6 +367,7 @@ export class ComputerGameController {
     if (this.state.status !== 'active') return;
 
     const currentToken = ++this.searchToken;
+    const turnStartedAt = Date.now();
     this.state.isEngineThinking = true;
     this.state.engineError = null;
     this.notifyState();
@@ -379,6 +399,28 @@ export class ComputerGameController {
       this.chess.fen() !== fenBeforeSearch
     ) {
       return;
+    }
+
+    if (result) {
+      const minimumMs = Math.max(0, this.minimumTurnMs(this.state.difficulty, this.state.timeControl));
+      const elapsedMs = Date.now() - turnStartedAt;
+      const computerTimeMs = this.state.computerColor === 'w'
+        ? this.state.whiteTimeMs
+        : this.state.blackTimeMs;
+      // Do not deliberately flag a low-clock engine. The final clock settlement
+      // below still charges all actual elapsed time, including this delay.
+      const remainingBudgetMs = computerTimeMs === null
+        ? Infinity
+        : Math.max(0, computerTimeMs - (Date.now() - this.lastClockTick) - 400);
+      const waitMs = Math.min(Math.max(0, minimumMs - elapsedMs), remainingBudgetMs);
+      if (waitMs > 0) {
+        await new Promise<void>((resolve) => setTimeout(resolve, waitMs));
+      }
+      if (
+        this.state.status !== 'active' ||
+        this.searchToken !== currentToken ||
+        this.chess.fen() !== fenBeforeSearch
+      ) return;
     }
 
     // Settle elapsed time for computer up to now BEFORE accepting move or applying increment

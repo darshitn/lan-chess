@@ -24,6 +24,7 @@ import { getCapturedPiecesAndScore } from '../../utils/chess-helpers.js';
 import { identifyOpening } from '../../utils/openings.js';
 import {
   ComputerGameController,
+  getMinimumComputerTurnMs,
   type ComputerGameConfig,
   type ComputerGameState,
   type GameSoundEvent,
@@ -80,7 +81,9 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
   // Initialize service and controller on mount
   useEffect(() => {
     const service = new ComputerPlayerService();
-    const ctrl = new ComputerGameController(service, initialConfig);
+    const ctrl = new ComputerGameController(service, initialConfig, {
+      minimumTurnMs: getMinimumComputerTurnMs,
+    });
 
     const unsubState = ctrl.subscribeState((state) => {
       setGameState({ ...state });

@@ -7,6 +7,7 @@ import {
   parseTimeControlParams,
   formatPgnTimeControl,
   buildComputerPgn,
+  getMinimumComputerTurnMs,
 } from './computer-game-controller.js';
 import { ComputerPlayerService } from './computer-player.js';
 import { getSavedGames } from './game-history.js';
@@ -102,6 +103,95 @@ describe('ComputerGameController', () => {
     expect(parseTimeControlParams('3+2')).toEqual({ initialMs: 180000, incrementMs: 2000 });
     expect(parseTimeControlParams('10+0')).toEqual({ initialMs: 600000, incrementMs: 0 });
     expect(parseTimeControlParams('1+1')).toEqual({ initialMs: 60000, incrementMs: 1000 });
+  });
+
+  it('paces a medium 3+2 turn long enough to offset the two-second increment', () => {
+    expect(getMinimumComputerTurnMs('medium', '3+2')).toBe(2400);
+    expect(getMinimumComputerTurnMs('medium', '5+0')).toBe(1900);
+    expect(getMinimumComputerTurnMs('beginner', '1+1')).toBe(1400);
+  });
+
+  it('charges deliberate pacing to the computer clock and keeps the move pending', async () => {
+    const service = createMockPlayerService((_cmd, emit) => emit('bestmove c7c5'));
+    const config: ComputerGameConfig = {
+      playerName: 'Alice', colorChoice: 'w', difficulty: 'medium', timeControl: '3+2',
+    };
+    const controller = new ComputerGameController(service, config, {
+      minimumTurnMs: () => 120,
+    });
+    await controller.startNewGame();
+    await controller.makeHumanMove('e2', 'e4');
+    await new Promise((resolve) => setTimeout(resolve, 45));
+    expect(controller.getState().moves).toHaveLength(1);
+    expect(controller.getState().isEngineThinking).toBe(true);
+    await waitFor(() => controller.getState().moves.length === 2);
+    expect(controller.getState().blackTimeMs!).toBeLessThan(180000 + 2000 - 90);
+    controller.dispose();
+    service.dispose();
+  });
+
+  it('discards a paced engine reply after restart', async () => {
+    const service = createMockPlayerService((_cmd, emit) => emit('bestmove c7c5'));
+    const config: ComputerGameConfig = {
+      playerName: 'Alice', colorChoice: 'w', difficulty: 'medium', timeControl: '3+2',
+    };
+    const controller = new ComputerGameController(service, config, {
+      minimumTurnMs: () => 120,
+    });
+    await controller.startNewGame();
+    await controller.makeHumanMove('e2', 'e4');
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    await controller.startNewGame();
+    await new Promise((resolve) => setTimeout(resolve, 130));
+    expect(controller.getState().moves).toHaveLength(0);
+    expect(controller.getState().turn).toBe('w');
+    controller.dispose();
+    service.dispose();
+  });
+
+  it('discards a paced engine reply after resignation', async () => {
+    const service = createMockPlayerService((_cmd, emit) => emit('bestmove c7c5'));
+    const config: ComputerGameConfig = {
+      playerName: 'Alice', colorChoice: 'w', difficulty: 'medium', timeControl: '3+2',
+    };
+    const controller = new ComputerGameController(service, config, {
+      minimumTurnMs: () => 120,
+    });
+    await controller.startNewGame();
+    await controller.makeHumanMove('e2', 'e4');
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    controller.resign();
+    expect(controller.getState().status).toBe('finished');
+    expect(controller.getState().winner).toBe('b');
+    expect(controller.getState().reason).toBe('White resigned');
+    await new Promise((resolve) => setTimeout(resolve, 130));
+    // The engine's move must not be applied
+    expect(controller.getState().moves).toHaveLength(1);
+    expect(controller.getState().status).toBe('finished');
+    controller.dispose();
+    service.dispose();
+  });
+
+  it('clamps pacing delay when engine clock is low to avoid flagging', async () => {
+    const service = createMockPlayerService((_cmd, emit) => emit('bestmove c7c5'));
+    const config: ComputerGameConfig = {
+      playerName: 'Alice', colorChoice: 'w', difficulty: 'medium', timeControl: '1+0',
+    };
+    const controller = new ComputerGameController(service, config, {
+      minimumTurnMs: () => 2000, // Normally a 2-second delay
+    });
+    await controller.startNewGame();
+    // Simulate low engine clock (300ms remaining, which is <= 400ms buffer)
+    (controller as any).state.blackTimeMs = 300;
+    (controller as any).lastClockTick = Date.now();
+
+    await controller.makeHumanMove('e2', 'e4');
+    // Because remaining budget is 0, the engine move should resolve almost immediately (within 100ms)
+    await waitFor(() => controller.getState().moves.length === 2, 300);
+    expect(controller.getState().moves).toHaveLength(2);
+    expect(controller.getState().moves[1].san).toBe('c5');
+    controller.dispose();
+    service.dispose();
   });
 
   it('initializes game with chosen color and difficulty', async () => {

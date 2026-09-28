@@ -1,7 +1,11 @@
+// @vitest-environment happy-dom
 import { describe, it, expect } from 'vitest';
-import React from 'react';
+import React, { act } from 'react';
+import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { WaitingPanel } from './WaitingPanel.js';
+
+(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 describe('WaitingPanel component', () => {
   it('renders host URL and room code when hostUrl is provided', () => {
@@ -33,5 +37,23 @@ describe('WaitingPanel component', () => {
     );
 
     expect(html).toContain('http://192.168.1.55:54321');
+  });
+
+  it('generates a QR image for the room-specific LAN URL', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(<WaitingPanel roomCode="UY3J" hostUrl="http://192.168.1.71:3001" />);
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+    const image = container.querySelector<HTMLImageElement>('[data-testid="room-invite-qr"]');
+    expect(image?.src).toMatch(/^data:image\/png;base64,/);
+    expect(image?.alt).toContain('UY3J');
+    expect(container.querySelector('summary')?.textContent).toContain('Scan QR to join');
+    act(() => root.unmount());
+    container.remove();
   });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildFullInviteText, buildLinkInviteText } from './invite.js';
+import { buildFullInviteText, buildLinkInviteText, buildRoomInviteUrl, getRoomCodeFromUrl } from './invite.js';
 
 describe('invite service', () => {
   it('constructs full invite text with hostUrl and roomCode', () => {
@@ -27,5 +27,18 @@ describe('invite service', () => {
 
   it('constructs link-only text as empty string when hostUrl is null', () => {
     expect(buildLinkInviteText(null)).toBe('');
+  });
+
+  it('builds a LAN QR link that prefills the Join form', () => {
+    expect(buildRoomInviteUrl('uy3j', 'http://192.168.1.71:3001'))
+      .toBe('http://192.168.1.71:3001/?room=UY3J');
+    expect(getRoomCodeFromUrl('?room=uy3j')).toBe('UY3J');
+  });
+
+  it('rejects malformed QR destinations and room query values', () => {
+    expect(buildRoomInviteUrl('UY3J', null)).toBeNull();
+    expect(buildRoomInviteUrl('UY3J', 'javascript:alert(1)')).toBeNull();
+    expect(buildRoomInviteUrl('X', 'http://192.168.1.71:3001')).toBeNull();
+    expect(getRoomCodeFromUrl('?room=%3Cscript%3E')).toBeNull();
   });
 });
