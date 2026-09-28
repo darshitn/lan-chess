@@ -13,6 +13,7 @@ import {
   SOCKET_EVENTS,
 } from '../shared/types.js';
 import { Lobby } from './components/Lobby.js';
+import { Navigation } from './components/Navigation.js';
 import { Chessboard } from './components/Chessboard.js';
 import { ResponsiveBoardFrame } from './components/ResponsiveBoardFrame.js';
 import { WaitingPanel } from './components/WaitingPanel.js';
@@ -772,27 +773,61 @@ export function App() {
   // RENDER: History View
   if (currentView === 'history') {
     return (
-      <HistoryView
-        games={savedGames}
-        playerName={preferences.playerName}
-        onSelectGame={handleSelectHistoryGame}
-        onDeleteGame={handleDeleteHistoryGame}
-        onToggleFavorite={handleToggleFavoriteHistoryGame}
-        onBackToPlay={() => setCurrentView('play')}
-      />
+      <div className="min-h-screen pb-10">
+        <Navigation
+          currentView={currentView}
+          onNavigate={(view) => setCurrentView(view)}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+        />
+        <HistoryView
+          games={savedGames}
+          playerName={preferences.playerName}
+          onSelectGame={handleSelectHistoryGame}
+          onDeleteGame={handleDeleteHistoryGame}
+          onToggleFavorite={handleToggleFavoriteHistoryGame}
+          onBackToPlay={() => setCurrentView('play')}
+        />
+        <SettingsModal
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+          preferences={preferences}
+          customThemes={customThemes}
+          onUpdatePreferences={handleUpdatePreferences}
+          onSaveCustomTheme={handleSaveCustomTheme}
+          onDeleteCustomTheme={handleDeleteCustomTheme}
+          isGameActive={isGameActive}
+        />
+      </div>
     );
   }
 
   // RENDER: Practice Sandbox View
   if (currentView === 'practice') {
     return (
-      <PracticeBoard
-        theme={activeTheme}
-        pieceSet={preferences.pieceSet}
-        highlightStyle={preferences.highlightStyle}
-        boardSettings={preferences.boardSettings}
-        onBackToPlay={() => setCurrentView('play')}
-      />
+      <div className="min-h-screen pb-10">
+        <Navigation
+          currentView={currentView}
+          onNavigate={(view) => setCurrentView(view)}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+        />
+        <PracticeBoard
+          theme={activeTheme}
+          pieceSet={preferences.pieceSet}
+          highlightStyle={preferences.highlightStyle}
+          boardSettings={preferences.boardSettings}
+          onBackToPlay={() => setCurrentView('play')}
+        />
+        <SettingsModal
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+          preferences={preferences}
+          customThemes={customThemes}
+          onUpdatePreferences={handleUpdatePreferences}
+          onSaveCustomTheme={handleSaveCustomTheme}
+          onDeleteCustomTheme={handleDeleteCustomTheme}
+          isGameActive={isGameActive}
+        />
+      </div>
     );
   }
 
@@ -820,74 +855,44 @@ export function App() {
   // RENDER: Puzzles View
   if (currentView === 'puzzles') {
     return (
-      <PuzzlePlayer
-        theme={activeTheme}
-        pieceSet={preferences.pieceSet}
-        highlightStyle={preferences.highlightStyle}
-        boardSettings={preferences.boardSettings}
-        onBackToPlay={() => setCurrentView('play')}
-      />
+      <div className="min-h-screen pb-10">
+        <Navigation
+          currentView={currentView}
+          onNavigate={(view) => setCurrentView(view)}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+        />
+        <PuzzlePlayer
+          theme={activeTheme}
+          pieceSet={preferences.pieceSet}
+          highlightStyle={preferences.highlightStyle}
+          boardSettings={preferences.boardSettings}
+          onBackToPlay={() => setCurrentView('play')}
+        />
+        <SettingsModal
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+          preferences={preferences}
+          customThemes={customThemes}
+          onUpdatePreferences={handleUpdatePreferences}
+          onSaveCustomTheme={handleSaveCustomTheme}
+          onDeleteCustomTheme={handleDeleteCustomTheme}
+          isGameActive={isGameActive}
+        />
+      </div>
     );
   }
 
   // RENDER: Lobby (when not in a room)
   if (!gameState) {
     return (
-      <div className="min-h-screen px-4 pb-10">
-        {/* Top Navbar */}
-        <nav className="mx-auto flex max-w-4xl items-center justify-between py-4 border-b border-slate-800/80 mb-2">
-          <div className="flex items-center gap-2">
-            <span className="text-xl">♟</span>
-            <span className="font-black text-sm tracking-wider text-white">LAN CHESS V2</span>
-          </div>
+      <div className="min-h-screen pb-10">
+        <Navigation
+          currentView={currentView}
+          onNavigate={(view) => setCurrentView(view)}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+        />
 
-          <div className="flex items-center gap-1.5 sm:gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setComputerConfig({
-                  playerName: preferences.playerName.trim() || 'Player',
-                  colorChoice: 'w',
-                  difficulty: 'medium',
-                  timeControl: '3+2',
-                });
-                setCurrentView('computer');
-              }}
-              className="rounded-lg border border-indigo-700/60 bg-indigo-950/70 px-2.5 py-1.5 text-xs text-indigo-200 hover:border-indigo-400 hover:text-white font-semibold"
-            >
-              🤖 Vs Computer
-            </button>
-            <button
-              type="button"
-              onClick={() => setCurrentView('history')}
-              className="rounded-lg border border-slate-800 bg-slate-900/60 px-2.5 py-1.5 text-xs text-slate-300 hover:border-slate-700 hover:text-white"
-            >
-              📜 Archives ({savedGames.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setCurrentView('puzzles')}
-              className="rounded-lg border border-slate-800 bg-slate-900/60 px-2.5 py-1.5 text-xs text-slate-300 hover:border-slate-700 hover:text-white"
-            >
-              🧩 Puzzles
-            </button>
-            <button
-              type="button"
-              onClick={() => setCurrentView('practice')}
-              className="rounded-lg border border-slate-800 bg-slate-900/60 px-2.5 py-1.5 text-xs text-slate-300 hover:border-slate-700 hover:text-white"
-            >
-              🔬 Sandbox
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsSettingsOpen(true)}
-              className="rounded-lg border border-slate-800 bg-slate-900/60 p-1.5 text-slate-300 hover:border-amber-400 hover:text-amber-300"
-              title="Settings & Themes"
-            >
-              ⚙️
-            </button>
-          </div>
-        </nav>
+        <div className="px-4">
 
         <UpdateBanner
           isGameActive={isGameActive}
@@ -916,6 +921,7 @@ export function App() {
           error={error}
           isConnecting={connectionStatus === 'connecting'}
         />
+        </div>
 
         <SettingsModal
           isOpen={isSettingsOpen}

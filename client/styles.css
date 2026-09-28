@@ -227,6 +227,7 @@ html.theme-glass .chat-message {
 .bg-slate-950\/80 { background-color: var(--surface-deep); }
 .bg-slate-900,
 .bg-slate-900\/60,
+.bg-slate-900\/70,
 .bg-slate-900\/80,
 .bg-slate-900\/90 { background-color: var(--surface-main); }
 .bg-slate-800,
