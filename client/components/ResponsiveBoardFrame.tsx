@@ -4,6 +4,7 @@ import {
   calculateFitSize,
   DEFAULT_MIN_BOARD_SIZE,
   DEFAULT_MAX_BOARD_SIZE,
+  FOCUS_MAX_BOARD_SIZE,
   DEFAULT_SAFE_BOTTOM_SPACING,
 } from '../services/board-sizing.js';
 import type { BoardSizeMode } from '../services/board-display.js';
@@ -28,7 +29,7 @@ export interface ResponsiveBoardFrameProps {
 export const ResponsiveBoardFrame: React.FC<ResponsiveBoardFrameProps> = ({
   children,
   minSize = DEFAULT_MIN_BOARD_SIZE,
-  maxSize = DEFAULT_MAX_BOARD_SIZE,
+  maxSize,
   safeBottomSpacing = DEFAULT_SAFE_BOTTOM_SPACING,
   sizeMode = 'fit',
   customSize,
@@ -39,6 +40,9 @@ export const ResponsiveBoardFrame: React.FC<ResponsiveBoardFrameProps> = ({
 }) => {
   const frameRef = useRef<HTMLDivElement>(null);
   const [boardSize, setBoardSize] = useState<number | null>(null);
+  const lastReportedRef = useRef<{ currentSize: number; fitSize: number; maxAllowedWidth: number } | null>(null);
+
+  const effectiveMaxSize = maxSize ?? (focusBoard ? FOCUS_MAX_BOARD_SIZE : DEFAULT_MAX_BOARD_SIZE);
 
   const measureAndResize = useCallback(() => {
     const frame = frameRef.current;
@@ -46,8 +50,9 @@ export const ResponsiveBoardFrame: React.FC<ResponsiveBoardFrameProps> = ({
     const parent = frame.parentElement;
     if (!parent) return;
 
-    const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
-    const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+    // Use window.innerWidth to align with CSS media queries (e.g. Tailwind lg: breakpoint >= 1024px)
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
     const containerWidth = parent.clientWidth;
 
     // Measure parent position relative to page top (unscrolled)
@@ -88,7 +93,7 @@ export const ResponsiveBoardFrame: React.FC<ResponsiveBoardFrameProps> = ({
       topOverhead,
       bottomOverhead,
       minBoardSize: minSize,
-      maxBoardSize: maxSize,
+      maxBoardSize: effectiveMaxSize,
       safeBottomSpacing,
       sizeMode,
       customSize,
@@ -100,16 +105,26 @@ export const ResponsiveBoardFrame: React.FC<ResponsiveBoardFrameProps> = ({
 
     setBoardSize((prev) => (prev === newSize ? prev : newSize));
 
-    if (onMeasuredSizeChange) {
-      onMeasuredSizeChange({
+    const last = lastReportedRef.current;
+    if (
+      !last ||
+      last.currentSize !== newSize ||
+      last.fitSize !== fitSize ||
+      last.maxAllowedWidth !== containerWidth
+    ) {
+      const nextReport = {
         currentSize: newSize,
         fitSize,
         maxAllowedWidth: Math.max(0, containerWidth),
-      });
+      };
+      lastReportedRef.current = nextReport;
+      if (onMeasuredSizeChange) {
+        onMeasuredSizeChange(nextReport);
+      }
     }
   }, [
     minSize,
-    maxSize,
+    effectiveMaxSize,
     safeBottomSpacing,
     sizeMode,
     customSize,
@@ -192,7 +207,7 @@ export const ResponsiveBoardFrame: React.FC<ResponsiveBoardFrameProps> = ({
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (!onResizeCustom) return;
-    const current = boardSize ?? 560;
+    const current = customSize ?? boardSize ?? 560;
     if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
       e.preventDefault();
       onResizeCustom(current + 16);
@@ -225,6 +240,7 @@ export const ResponsiveBoardFrame: React.FC<ResponsiveBoardFrameProps> = ({
             role="slider"
             aria-label="Drag to resize chessboard"
             aria-valuemin={minSize}
+            aria-valuemax={effectiveMaxSize}
             aria-valuenow={boardSize ?? 560}
             tabIndex={0}
             onPointerDown={handlePointerDown}

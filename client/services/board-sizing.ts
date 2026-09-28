@@ -40,21 +40,32 @@ export function calculateFitSize(options: BoardSizeOptions): number {
     minBoardSize = DEFAULT_MIN_BOARD_SIZE,
     maxBoardSize = options.focusBoard ? FOCUS_MAX_BOARD_SIZE : DEFAULT_MAX_BOARD_SIZE,
     safeBottomSpacing = DEFAULT_SAFE_BOTTOM_SPACING,
+    focusBoard = false,
   } = options;
 
   // Maximum width available in the board container column
   const availableWidth = Math.max(0, containerWidth);
 
-  // Remaining vertical space in the viewport for the board
-  const availableHeight = Math.max(
+  // In normal fit, the entire game view (top overhead + board + bottom overhead + safe spacing)
+  // fits cleanly in the viewport without vertical scrolling.
+  const normalFitHeight = Math.max(
     0,
     viewportHeight - topOverhead - bottomOverhead - safeBottomSpacing
   );
 
+  // In focus mode, deliberate vertical scrolling for secondary controls (bottom player card / action buttons)
+  // is acceptable, allowing the board to reliably and visibly enlarge to fill the viewport below the top overhead.
+  const focusHeight = Math.max(
+    0,
+    viewportHeight - topOverhead - safeBottomSpacing
+  );
+
+  const availableHeight = focusBoard ? focusHeight : normalFitHeight;
+
   let targetSize: number;
 
-  // On desktop / wide screens (>= 1024px, matching Tailwind 'lg:'), layout is side-by-side.
-  // The board MUST fit within both available column width AND remaining viewport height.
+  // On desktop / wide screens (>= 1024px, matching Tailwind 'lg:'), layout is desktop view.
+  // The board fits within available column width AND the mode's vertical space.
   if (viewportWidth >= 1024) {
     targetSize = Math.min(availableWidth, availableHeight);
   } else {

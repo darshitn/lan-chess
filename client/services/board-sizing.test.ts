@@ -200,10 +200,111 @@ describe('board-sizing: calculateBoardSize', () => {
         safeBottomSpacing: 16,
         focusBoard: true,
       });
-      // availableHeight = 1200 - 140 - 60 - 16 = 984
-      // min(1100, 984) = 984 > 736
-      expect(size).toBe(984);
+      // availableHeight = 1200 - 140 - 16 = 1044, min(1100, 1044) = 1044
+      expect(size).toBe(1044);
       expect(size).toBeGreaterThan(736);
+    });
+
+    it('reliably and visibly enlarges board when toggling Fit -> Focus at 1280x800', () => {
+      const overheads = {
+        topOverhead: 240,
+        bottomOverhead: 146,
+        safeBottomSpacing: 16,
+      };
+
+      const fitSize = calculateBoardSize({
+        viewportWidth: 1280,
+        viewportHeight: 800,
+        containerWidth: 728, // normal layout with sidebar
+        ...overheads,
+        focusBoard: false,
+      });
+      // fitHeight = 800 - 240 - 146 - 16 = 398
+      expect(fitSize).toBe(398);
+
+      const focusSize = calculateBoardSize({
+        viewportWidth: 1280,
+        viewportHeight: 800,
+        containerWidth: 1104, // expanded column in focus mode
+        ...overheads,
+        focusBoard: true,
+      });
+      // focusHeight = 800 - 240 - 16 = 544, min(1104, 544) = 544
+      expect(focusSize).toBe(544);
+      expect(focusSize).toBeGreaterThan(fitSize);
+    });
+
+    it('reliably and visibly enlarges board when toggling Fit -> Focus at 1024x680 without overflowing', () => {
+      const overheads = {
+        topOverhead: 170,
+        bottomOverhead: 146,
+        safeBottomSpacing: 16,
+      };
+
+      const fitSize = calculateBoardSize({
+        viewportWidth: 1024,
+        viewportHeight: 680,
+        containerWidth: 585,
+        ...overheads,
+        focusBoard: false,
+      });
+      // fitHeight = 680 - 170 - 146 - 16 = 348, min(585, 348) = 348
+      expect(fitSize).toBe(348);
+
+      const focusSize = calculateBoardSize({
+        viewportWidth: 1024,
+        viewportHeight: 680,
+        containerWidth: 961,
+        ...overheads,
+        focusBoard: true,
+      });
+      // focusHeight = 680 - 170 - 16 = 494, min(961, 494) = 494
+      expect(focusSize).toBe(494);
+      expect(focusSize).toBeGreaterThan(fitSize);
+    });
+
+    it('adapts when resizing window from 1280x800 down to 1024x680 while in Focus mode', () => {
+      const overheads = {
+        topOverhead: 200,
+        bottomOverhead: 120,
+        safeBottomSpacing: 16,
+      };
+
+      const initialSize = calculateBoardSize({
+        viewportWidth: 1280,
+        viewportHeight: 800,
+        containerWidth: 1104,
+        ...overheads,
+        focusBoard: true,
+      });
+      // 800 - 200 - 16 = 584
+      expect(initialSize).toBe(584);
+
+      const resizedSize = calculateBoardSize({
+        viewportWidth: 1024,
+        viewportHeight: 680,
+        containerWidth: 960,
+        ...overheads,
+        focusBoard: true,
+      });
+      // 680 - 200 - 16 = 464
+      expect(resizedSize).toBe(464);
+      expect(resizedSize).toBeLessThan(initialSize);
+      expect(resizedSize).toBeLessThanOrEqual(960);
+    });
+
+    it('clamps focus board size to container width on narrow screens to prevent horizontal overflow', () => {
+      const size = calculateBoardSize({
+        viewportWidth: 400,
+        viewportHeight: 800,
+        containerWidth: 360,
+        topOverhead: 100,
+        bottomOverhead: 60,
+        safeBottomSpacing: 16,
+        focusBoard: true,
+      });
+      // Even in focus mode, narrow screen container width (360) is the strict upper bound
+      expect(size).toBe(360);
     });
   });
 });
