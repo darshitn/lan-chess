@@ -495,6 +495,8 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
               focusBoard={boardDisplay.focusBoard}
               isFullscreen={boardDisplay.isFullscreen}
               isFullscreenSupported={boardDisplay.isFullscreenSupported}
+              fullscreenError={boardDisplay.fullscreenError}
+              onClearFullscreenError={boardDisplay.clearFullscreenError}
               onSetSizeMode={boardDisplay.setSizeMode}
               onCustomSizeChange={boardDisplay.setCustomSize}
               onStepSize={(delta) => boardDisplay.stepCustomSize(delta, measuredBoard.currentSize)}

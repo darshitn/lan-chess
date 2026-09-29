@@ -141,4 +141,85 @@ describe('BoardControls component', () => {
     });
     container.remove();
   });
+
+  it('renders Exit state when isFullscreen is true', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <BoardControls
+          sizeMode="fit"
+          currentSize={560}
+          fitSize={560}
+          maxAllowedWidth={800}
+          focusBoard={false}
+          isFullscreen={true}
+          isFullscreenSupported={true}
+          onSetSizeMode={() => {}}
+          onCustomSizeChange={() => {}}
+          onStepSize={() => {}}
+          onResetToFit={() => {}}
+          onToggleFocusBoard={() => {}}
+          onToggleFullscreen={() => {}}
+        />
+      );
+    });
+
+    const exitBtn = container.querySelector('button[aria-label="Exit fullscreen"]') as HTMLButtonElement;
+    expect(exitBtn).not.toBeNull();
+    expect(exitBtn.getAttribute('aria-pressed')).toBe('true');
+    expect(exitBtn.textContent).toContain('Exit');
+
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it('renders fullscreen error alert and allows dismissing it', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    const onClearError = vi.fn();
+
+    await act(async () => {
+      root.render(
+        <BoardControls
+          sizeMode="fit"
+          currentSize={560}
+          fitSize={560}
+          maxAllowedWidth={800}
+          focusBoard={false}
+          isFullscreen={false}
+          isFullscreenSupported={true}
+          fullscreenError="Permissions check failed"
+          onClearFullscreenError={onClearError}
+          onSetSizeMode={() => {}}
+          onCustomSizeChange={() => {}}
+          onStepSize={() => {}}
+          onResetToFit={() => {}}
+          onToggleFocusBoard={() => {}}
+          onToggleFullscreen={() => {}}
+        />
+      );
+    });
+
+    const alert = container.querySelector('[role="alert"]');
+    expect(alert).not.toBeNull();
+    expect(alert?.textContent).toContain('Permissions check failed');
+
+    const dismissBtn = container.querySelector('button[aria-label="Dismiss fullscreen error"]') as HTMLButtonElement;
+    expect(dismissBtn).not.toBeNull();
+    act(() => {
+      dismissBtn.click();
+    });
+    expect(onClearError).toHaveBeenCalled();
+
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+  });
 });

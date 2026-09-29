@@ -13,6 +13,8 @@ export interface BoardControlsProps {
   focusBoard: boolean;
   isFullscreen: boolean;
   isFullscreenSupported: boolean;
+  fullscreenError?: string | null;
+  onClearFullscreenError?: () => void;
   onSetSizeMode: (mode: BoardSizeMode) => void;
   onCustomSizeChange: (size: number) => void;
   onStepSize: (delta: number) => void;
@@ -28,6 +30,8 @@ export const BoardControls: React.FC<BoardControlsProps> = ({
   focusBoard,
   isFullscreen,
   isFullscreenSupported,
+  fullscreenError,
+  onClearFullscreenError,
   onCustomSizeChange,
   onStepSize,
   onResetToFit,
@@ -181,6 +185,28 @@ export const BoardControls: React.FC<BoardControlsProps> = ({
           </button>
         )}
       </div>
+
+      {fullscreenError && (
+        <div
+          role="alert"
+          className="w-full mt-1 flex items-center justify-between rounded border border-amber-500/40 bg-amber-950/80 px-2.5 py-1 text-[11px] text-amber-200"
+        >
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span aria-hidden="true" className="shrink-0">⚠️</span>
+            <span className="truncate">{fullscreenError}</span>
+          </div>
+          {onClearFullscreenError && (
+            <button
+              type="button"
+              onClick={onClearFullscreenError}
+              className="ml-2 shrink-0 text-amber-400 hover:text-white font-bold px-1"
+              aria-label="Dismiss fullscreen error"
+            >
+              ×
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 };

@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import type { PlayerColor, PromotionPiece } from '../../shared/types.js';
+import { ChessPiece } from './chess/ChessPiece.js';
 
 interface PromotionModalProps {
   color: PlayerColor;
@@ -7,11 +8,11 @@ interface PromotionModalProps {
   onCancel: () => void;
 }
 
-const PROMOTION_CHOICES: Array<{ piece: PromotionPiece; label: string; glyph: Record<PlayerColor, string> }> = [
-  { piece: 'q', label: 'Queen', glyph: { w: '♕', b: '♛' } },
-  { piece: 'r', label: 'Rook', glyph: { w: '♖', b: '♜' } },
-  { piece: 'b', label: 'Bishop', glyph: { w: '♗', b: '♝' } },
-  { piece: 'n', label: 'Knight', glyph: { w: '♘', b: '♞' } },
+const PROMOTION_CHOICES: Array<{ piece: PromotionPiece; label: string }> = [
+  { piece: 'q', label: 'Queen' },
+  { piece: 'r', label: 'Rook' },
+  { piece: 'b', label: 'Bishop' },
+  { piece: 'n', label: 'Knight' },
 ];
 
 export const PromotionModal: React.FC<PromotionModalProps> = ({ color, onSelect, onCancel }) => {
@@ -41,15 +42,17 @@ export const PromotionModal: React.FC<PromotionModalProps> = ({ color, onSelect,
         <h2>Promote your pawn</h2>
         <p className="mt-1 text-sm text-slate-300">Choose a piece to replace your promoting pawn:</p>
         <div className="mt-4 grid grid-cols-4 gap-2">
-          {PROMOTION_CHOICES.map(({ piece, label, glyph }) => (
+          {PROMOTION_CHOICES.map(({ piece, label }) => (
             <button
               key={piece}
               type="button"
-              className="promotion-choice flex flex-col items-center justify-center p-2 text-center"
+              className="promotion-choice flex flex-col items-center justify-center p-2 text-center transition-all hover:scale-105"
               aria-label={label}
               onClick={() => onSelect(piece)}
             >
-              <span>{glyph[color]}</span>
+              <div className="h-12 w-12 flex items-center justify-center">
+                <ChessPiece type={piece} color={color} />
+              </div>
               <span className="mt-1 text-xs font-semibold text-slate-300">{label}</span>
             </button>
           ))}

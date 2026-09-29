@@ -4,6 +4,8 @@ import {
   saveBoardDisplayPreferences,
   DEFAULT_BOARD_DISPLAY_PREFERENCES,
   STORAGE_KEY_BOARD_DISPLAY,
+  getFullscreenElement,
+  checkIsFullscreenSupported,
 } from './board-display.js';
 
 function installFakeStorage(initial: Record<string, string> = {}) {
@@ -93,5 +95,47 @@ describe('board-display preferences service', () => {
     expect(prefs.sizeMode).toBe('custom');
     expect(prefs.customSize).toBe(721);
     expect(prefs.focusBoard).toBe(false);
+  });
+});
+
+describe('fullscreen helpers and cross-browser detection', () => {
+  it('returns null when document is undefined', () => {
+    expect(getFullscreenElement(undefined)).toBeNull();
+  });
+
+  it('detects standard and vendor-prefixed fullscreenElement', () => {
+    const el = {} as Element;
+
+    // Standard
+    expect(getFullscreenElement({ fullscreenElement: el } as Document)).toBe(el);
+
+    // WebKit
+    expect(getFullscreenElement({ webkitFullscreenElement: el } as unknown as Document)).toBe(el);
+
+    // Mozilla
+    expect(getFullscreenElement({ mozFullScreenElement: el } as unknown as Document)).toBe(el);
+
+    // Microsoft
+    expect(getFullscreenElement({ msFullscreenElement: el } as unknown as Document)).toBe(el);
+
+    // Not in fullscreen
+    expect(getFullscreenElement({} as Document)).toBeNull();
+  });
+
+  it('detects standard and vendor-prefixed fullscreenEnabled', () => {
+    expect(checkIsFullscreenSupported(undefined)).toBe(false);
+
+    // Standard enabled
+    expect(checkIsFullscreenSupported({ fullscreenEnabled: true } as Document)).toBe(true);
+    expect(checkIsFullscreenSupported({ fullscreenEnabled: false } as Document)).toBe(false);
+
+    // WebKit enabled
+    expect(checkIsFullscreenSupported({ webkitFullscreenEnabled: true } as unknown as Document)).toBe(true);
+
+    // Moz enabled
+    expect(checkIsFullscreenSupported({ mozFullScreenEnabled: true } as unknown as Document)).toBe(true);
+
+    // MS enabled
+    expect(checkIsFullscreenSupported({ msFullscreenEnabled: true } as unknown as Document)).toBe(true);
   });
 });

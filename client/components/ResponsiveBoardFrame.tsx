@@ -147,6 +147,8 @@ export const ResponsiveBoardFrame: React.FC<ResponsiveBoardFrameProps> = ({
 
     window.addEventListener('resize', handleResize);
     window.visualViewport?.addEventListener('resize', handleResize);
+    document.addEventListener('fullscreenchange', handleResize);
+    document.addEventListener('webkitfullscreenchange', handleResize);
 
     const frame = frameRef.current;
     const parent = frame?.parentElement;
@@ -162,6 +164,8 @@ export const ResponsiveBoardFrame: React.FC<ResponsiveBoardFrameProps> = ({
       if (rafId !== null) cancelAnimationFrame(rafId);
       window.removeEventListener('resize', handleResize);
       window.visualViewport?.removeEventListener('resize', handleResize);
+      document.removeEventListener('fullscreenchange', handleResize);
+      document.removeEventListener('webkitfullscreenchange', handleResize);
       resizeObserver?.disconnect();
     };
   }, [measureAndResize]);

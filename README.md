@@ -1,4 +1,4 @@
-# LAN Chess — v1.2.1
+# LAN Chess — v1.2.2
 
 LAN Chess is a local-network multiplayer chess game built with React, Vite, Express, Socket.IO, and chess.js — no external chess service required. Play over LAN with friends, or play offline against the built-in Stockfish engine.
 
@@ -95,7 +95,7 @@ The server prints the LAN URL (e.g. `http://192.168.1.25:3001`) — share it wit
 
 ### Desktop Application (Windows)
 
-Download the installer from the [v1.2.1 Release](https://github.com/darshitn/lan-chess/releases/tag/v1.2.1) ([`LAN-Chess-Setup-1.2.1.exe`](https://github.com/darshitn/lan-chess/releases/download/v1.2.1/LAN-Chess-Setup-1.2.1.exe)).
+Download the installer from the [v1.2.2 Release](https://github.com/darshitn/lan-chess/releases/tag/v1.2.2) ([`LAN-Chess-Setup-1.2.2.exe`](https://github.com/darshitn/lan-chess/releases/download/v1.2.2/LAN-Chess-Setup-1.2.2.exe)).
 
 > [!NOTE]
 > - **In-App Updating from v1.2.0**: Existing v1.2.0 installations can receive this update automatically via the in-app updater (check **Settings → Updates**).

@@ -10,7 +10,9 @@ import {
   BUILTIN_BOARD_THEMES,
   ONE_CLICK_PRESETS,
   applyUiThemeToDom,
+  resetAppearancePreferences,
 } from '../../services/preferences.js';
+import { ChessPiece } from '../chess/ChessPiece.js';
 import { invalidateSoundVolumeCache } from '../../utils/sound.js';
 import { useModalBehavior } from '../../utils/modal-behavior.js';
 import { CustomBoardBuilder } from '../themes/CustomBoardBuilder.js';
@@ -36,15 +38,32 @@ interface SettingsModalProps {
   isGameActive?: boolean;
 }
 
-const PIECE_SETS: Array<{ id: PieceSetId; name: string; preview: string }> = [
-  { id: 'classic', name: 'Classic', preview: '♔ ♕ ♖ ♗ ♘ ♙' },
-  { id: 'modern', name: 'Modern', preview: '♔ ♕ ♖ ♗ ♘ ♙' },
-  { id: 'minimal', name: 'Minimal', preview: '♔ ♕ ♖ ♗ ♘ ♙' },
-  { id: 'glass', name: 'Glass', preview: '♔ ♕ ♖ ♗ ♘ ♙' },
-  { id: 'wood', name: 'Wood', preview: '♔ ♕ ♖ ♗ ♘ ♙' },
-  { id: 'neon', name: 'Neon', preview: '♔ ♕ ♖ ♗ ♘ ♙' },
-  { id: 'cyber', name: 'Cyber', preview: '♔ ♕ ♖ ♗ ♘ ♙' },
-  { id: 'silhouette', name: 'Silhouette', preview: '♚ ♛ ♜ ♝ ♞ ♟' },
+const MiniBoardPreview: React.FC<{ theme: BoardTheme; pieceSet?: PieceSetId }> = ({ theme, pieceSet }) => (
+  <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-md border border-slate-700/80 shadow-inner grid grid-cols-2 grid-rows-2">
+    <div className="flex items-center justify-center p-0.5" style={{ backgroundColor: theme.lightSquare }}>
+      <ChessPiece type="n" color="w" pieceSet={pieceSet} className="w-full h-full" />
+    </div>
+    <div className="flex items-center justify-center p-0.5" style={{ backgroundColor: theme.darkSquare }}>
+      <ChessPiece type="p" color="b" pieceSet={pieceSet} className="w-full h-full" />
+    </div>
+    <div className="flex items-center justify-center p-0.5" style={{ backgroundColor: theme.darkSquare }}>
+      <ChessPiece type="r" color="w" pieceSet={pieceSet} className="w-full h-full" />
+    </div>
+    <div className="flex items-center justify-center p-0.5" style={{ backgroundColor: theme.lightSquare }}>
+      <ChessPiece type="k" color="b" pieceSet={pieceSet} className="w-full h-full" />
+    </div>
+  </div>
+);
+
+const PIECE_SETS: Array<{ id: PieceSetId; name: string }> = [
+  { id: 'classic', name: 'Classic Staunton' },
+  { id: 'modern', name: 'Modern' },
+  { id: 'minimal', name: 'Minimal' },
+  { id: 'glass', name: 'Glass' },
+  { id: 'wood', name: 'Wood' },
+  { id: 'neon', name: 'Neon' },
+  { id: 'cyber', name: 'Cyber' },
+  { id: 'silhouette', name: 'Silhouette' },
 ];
 
 const HIGHLIGHT_STYLES: Array<{ id: HighlightStyleId; name: string; desc: string }> = [
@@ -56,7 +75,10 @@ const HIGHLIGHT_STYLES: Array<{ id: HighlightStyleId; name: string; desc: string
 ];
 
 const UI_THEMES: Array<{ id: UiThemeId; name: string; bg: string }> = [
-  { id: 'dark', name: 'Dark Slate', bg: '#020617' },
+  { id: 'slate', name: 'Slate (Charcoal & Teal)', bg: '#0b0f19' },
+  { id: 'ivory', name: 'Ivory (Warm Cream & Ink)', bg: '#f6f3eb' },
+  { id: 'walnut', name: 'Walnut (Warm Wood & Copper)', bg: '#14110f' },
+  { id: 'dark', name: 'Dark Slate & Amber', bg: '#020617' },
   { id: 'light', name: 'Clean Light', bg: '#f1f5f9' },
   { id: 'midnight', name: 'Midnight Blue', bg: '#090d16' },
   { id: 'oled', name: 'OLED Black', bg: '#000000' },
@@ -77,7 +99,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   isGameActive = false,
 }) => {
   const [activeTab, setActiveTab] = useState<'appearance' | 'builder' | 'sound' | 'gameplay' | 'analysis' | 'updates'>('appearance');
-  const [lockedModalNotice, setLockedModalNotice] = useState<string | null>(null);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatusPayload | null>(null);
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
@@ -139,17 +160,34 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const handleSelectTheme = (theme: BoardTheme) => {
-    if (theme.isLocked) {
-      setLockedModalNotice(`Premium Theme: "${theme.name}" is a concept preview and locked in this version.`);
-      return;
-    }
     onUpdatePreferences({ ...preferences, activeThemeId: theme.id });
+  };
+
+  const handleResetAppearance = () => {
+    const updated = resetAppearancePreferences(preferences);
+    onUpdatePreferences(updated);
+    applyUiThemeToDom(updated.uiTheme);
   };
 
   const handleUiThemeChange = (themeId: UiThemeId) => {
     onUpdatePreferences({ ...preferences, uiTheme: themeId });
     applyUiThemeToDom(themeId);
   };
+
+  const activePreset = ONE_CLICK_PRESETS.find(
+    (p) =>
+      p.themeId === preferences.activeThemeId &&
+      p.pieceSet === preferences.pieceSet &&
+      p.highlightStyle === preferences.highlightStyle &&
+      p.uiTheme === preferences.uiTheme
+  );
+
+  const recommendedPresets = ONE_CLICK_PRESETS.filter((p) =>
+    ['preset-slate', 'preset-ivory', 'preset-walnut'].includes(p.id)
+  );
+  const otherPresets = ONE_CLICK_PRESETS.filter(
+    (p) => !['preset-slate', 'preset-ivory', 'preset-walnut'].includes(p.id)
+  );
 
   return (
     <div
@@ -174,6 +212,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <button
             type="button"
             onClick={onClose}
+            aria-label="Close settings"
             className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"
           >
             ✕
@@ -210,211 +249,305 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* APPEARANCE TAB */}
           {activeTab === 'appearance' && (
             <div className="space-y-8">
-              {/* One-Click Presets */}
-              <section>
-                <h3 className="text-sm font-bold uppercase tracking-wider text-amber-400">One-Click Presets</h3>
-                <p className="mt-0.5 text-xs text-slate-400">Instant full visual styles tailored for various aesthetics.</p>
-                <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                  {ONE_CLICK_PRESETS.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => handleApplyPreset(p.id)}
-                      className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-left transition-all hover:border-amber-400/80 hover:bg-slate-800/80"
-                    >
-                      <span className="font-bold text-white text-sm">{p.name}</span>
-                      <p className="mt-1 text-[11px] text-slate-400 leading-tight">{p.description}</p>
-                    </button>
-                  ))}
+              {/* Presets Status & Reset Bar */}
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3.5">
+                <div>
+                  <span className="text-xs font-semibold text-slate-400">Current Appearance:</span>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    {activePreset ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-teal-500/15 px-2.5 py-0.5 text-xs font-bold text-teal-400 border border-teal-500/30">
+                        <span className="h-1.5 w-1.5 rounded-full bg-teal-400" />
+                        {activePreset.name} Preset
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-bold text-amber-400 border border-amber-500/30">
+                        <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                        Customized Configuration
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </section>
+                <button
+                  type="button"
+                  onClick={handleResetAppearance}
+                  className="action-button action-secondary px-3 py-1.5 text-xs text-slate-300 hover:text-white"
+                  title="Reset appearance to recommended Slate defaults (preserves player name, sounds, and stats)"
+                >
+                  ↺ Reset Appearance
+                </button>
+              </div>
 
-              {/* Board Themes */}
+              {/* Recommended Presets */}
               <section>
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold uppercase tracking-wider text-amber-400">Board Themes</h3>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('builder')}
-                    className="text-xs font-semibold text-amber-300 hover:underline"
-                  >
-                    + Create Custom Board
-                  </button>
+                  <div>
+                    <h3 className="text-sm font-bold uppercase tracking-wider text-amber-400">Recommended Presets</h3>
+                    <p className="mt-0.5 text-xs text-slate-400">Cohesive, tournament-tested visual identities with Staunton SVG pieces.</p>
+                  </div>
                 </div>
-                <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4">
-                  {BUILTIN_BOARD_THEMES.map((theme) => {
-                    const isSelected = preferences.activeThemeId === theme.id;
+                <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                  {recommendedPresets.map((p) => {
+                    const isSelected = activePreset?.id === p.id;
+                    const presetTheme = BUILTIN_BOARD_THEMES.find((t) => t.id === p.themeId);
                     return (
                       <button
-                        key={theme.id}
+                        key={p.id}
                         type="button"
-                        onClick={() => handleSelectTheme(theme)}
-                        className={`flex flex-col items-center justify-between rounded-xl border p-2.5 text-center transition-all ${
+                        onClick={() => handleApplyPreset(p.id)}
+                        className={`flex flex-col justify-between rounded-xl border p-3.5 text-left transition-all ${
                           isSelected
-                            ? 'border-amber-400 bg-amber-400/10 shadow-md shadow-amber-500/10'
-                            : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
+                            ? 'border-teal-400 bg-teal-500/10 shadow-lg shadow-teal-500/10 ring-1 ring-teal-400'
+                            : 'border-slate-800 bg-slate-950/60 hover:border-slate-700 hover:bg-slate-800/80'
                         }`}
                       >
-                        <div className="flex h-7 w-14 overflow-hidden rounded-md border border-slate-700 shadow-inner">
-                          <div className="w-1/2" style={{ backgroundColor: theme.lightSquare }} />
-                          <div className="w-1/2" style={{ backgroundColor: theme.darkSquare }} />
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <span className="font-bold text-white text-sm">{p.name}</span>
+                            {isSelected && (
+                              <span className="ml-1.5 text-[10px] uppercase font-bold text-teal-400 bg-teal-950/80 px-1.5 py-0.5 rounded border border-teal-500/30">Active</span>
+                            )}
+                          </div>
+                          {presetTheme && <MiniBoardPreview theme={presetTheme} pieceSet={p.pieceSet} />}
                         </div>
-                        <div className="mt-2 flex items-center gap-1">
-                          <span className="text-xs font-bold text-white">{theme.name}</span>
-                          {theme.isLocked && <span className="text-[10px]" title="Locked preview">🔒</span>}
+                        <p className="mt-2 text-[11px] text-slate-400 leading-snug">{p.description}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              {/* Classic & Creative Presets */}
+              <section>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Other One-Click Presets</h3>
+                <div className="mt-2.5 grid gap-2 sm:grid-cols-3">
+                  {otherPresets.map((p) => {
+                    const isSelected = activePreset?.id === p.id;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => handleApplyPreset(p.id)}
+                        className={`rounded-xl border p-2.5 text-left transition-all ${
+                          isSelected
+                            ? 'border-amber-400 bg-amber-400/10'
+                            : 'border-slate-800 bg-slate-950/60 hover:border-slate-700 hover:bg-slate-800/80'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-white text-xs">{p.name}</span>
+                          {isSelected && <span className="text-[10px] font-bold text-amber-400">Active</span>}
                         </div>
+                        <p className="mt-0.5 text-[10px] text-slate-400 leading-tight">{p.description}</p>
                       </button>
                     );
                   })}
                 </div>
               </section>
 
-              {/* Piece Sets */}
-              <section>
-                <h3 className="text-sm font-bold uppercase tracking-wider text-amber-400">Piece Sets</h3>
-                <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                  {PIECE_SETS.map((set) => {
-                    const isSelected = preferences.pieceSet === set.id;
-                    return (
-                      <button
-                        key={set.id}
-                        type="button"
-                        onClick={() => onUpdatePreferences({ ...preferences, pieceSet: set.id })}
-                        className={`rounded-xl border p-2.5 text-center transition-all ${
-                          isSelected
-                            ? 'border-amber-400 bg-amber-400/10'
-                            : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
-                        }`}
-                      >
-                        <span className="text-lg font-serif text-white tracking-widest">{set.preview}</span>
-                        <p className="mt-1 text-xs font-bold text-slate-300">{set.name}</p>
-                      </button>
-                    );
-                  })}
+              {/* ADVANCED CUSTOMIZATION SECTION */}
+              <div className="border-t border-slate-800/80 pt-6 space-y-7">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-black uppercase tracking-widest text-slate-400">Advanced Customization</span>
+                  <div className="h-px flex-1 bg-slate-800" />
                 </div>
-              </section>
 
-              {/* Highlight Styles */}
-              <section>
-                <h3 className="text-sm font-bold uppercase tracking-wider text-amber-400">Highlight Styles</h3>
-                <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                  {HIGHLIGHT_STYLES.map((h) => {
-                    const isSelected = preferences.highlightStyle === h.id;
-                    return (
-                      <button
-                        key={h.id}
-                        type="button"
-                        onClick={() => onUpdatePreferences({ ...preferences, highlightStyle: h.id })}
-                        className={`rounded-xl border p-3 text-left transition-all ${
-                          isSelected
-                            ? 'border-amber-400 bg-amber-400/10'
-                            : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
-                        }`}
-                      >
-                        <span className="text-xs font-bold text-white">{h.name}</span>
-                        <p className="text-[11px] text-slate-400">{h.desc}</p>
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-
-              {/* UI Themes */}
-              <section>
-                <h3 className="text-sm font-bold uppercase tracking-wider text-amber-400">Application UI Themes</h3>
-                <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-                  {UI_THEMES.map((t) => {
-                    const isSelected = preferences.uiTheme === t.id;
-                    return (
-                      <button
-                        key={t.id}
-                        type="button"
-                        onClick={() => handleUiThemeChange(t.id)}
-                        className={`flex items-center gap-2.5 rounded-xl border p-2.5 transition-all ${
-                          isSelected
-                            ? 'border-amber-400 bg-amber-400/10'
-                            : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
-                        }`}
-                      >
-                        <span className="h-5 w-5 rounded-full border border-slate-700 shadow" style={{ backgroundColor: t.bg }} />
-                        <span className="text-xs font-bold text-white">{t.name}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-
-              {/* Board Display Elements */}
-              <section>
-                <h3 className="text-sm font-bold uppercase tracking-wider text-amber-400">Display Options</h3>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  <label className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-                    <span className="text-xs font-semibold text-slate-300">Board Coordinates</span>
-                    <input
-                      type="checkbox"
-                      checked={preferences.boardSettings.coordinates}
-                      onChange={(e) =>
-                        onUpdatePreferences({
-                          ...preferences,
-                          boardSettings: { ...preferences.boardSettings, coordinates: e.target.checked },
-                        })
-                      }
-                      className="h-4 w-4 rounded accent-amber-400"
-                    />
-                  </label>
-
-                  <label className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-                    <span className="text-xs font-semibold text-slate-300">Coordinate Size</span>
-                    <select
-                      value={preferences.boardSettings.coordinateStyle}
-                      onChange={(e) =>
-                        onUpdatePreferences({
-                          ...preferences,
-                          boardSettings: {
-                            ...preferences.boardSettings,
-                            coordinateStyle: e.target.value as 'inside' | 'outside' | 'small' | 'large',
-                          },
-                        })
-                      }
-                      className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-white"
+                {/* Board Themes */}
+                <section>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400">Board Themes</h4>
+                      <p className="text-[11px] text-slate-400">Select any tournament, wood, or stylized board.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('builder')}
+                      className="text-xs font-semibold text-amber-300 hover:underline"
                     >
-                      <option value="inside">Standard</option>
-                      <option value="small">Small</option>
-                      <option value="large">Large</option>
-                    </select>
-                  </label>
+                      + Create Custom Board
+                    </button>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4">
+                    {BUILTIN_BOARD_THEMES.map((theme) => {
+                      const isSelected = preferences.activeThemeId === theme.id;
+                      return (
+                        <button
+                          key={theme.id}
+                          type="button"
+                          onClick={() => handleSelectTheme(theme)}
+                          className={`flex items-center gap-2.5 rounded-xl border p-2 text-left transition-all ${
+                            isSelected
+                              ? 'border-amber-400 bg-amber-400/10 shadow-md shadow-amber-500/10 ring-1 ring-amber-400/80'
+                              : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
+                          }`}
+                        >
+                          <MiniBoardPreview theme={theme} pieceSet={preferences.pieceSet} />
+                          <div className="min-w-0 flex-1">
+                            <span className="block text-xs font-bold text-white truncate">{theme.name}</span>
+                            <span className="text-[10px] text-slate-400 block truncate">{theme.description ?? ''}</span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
 
-                  <label className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-                    <span className="text-xs font-semibold text-slate-300">Board Border & Shell</span>
-                    <input
-                      type="checkbox"
-                      checked={preferences.boardSettings.boardBorder}
-                      onChange={(e) =>
-                        onUpdatePreferences({
-                          ...preferences,
-                          boardSettings: { ...preferences.boardSettings, boardBorder: e.target.checked },
-                        })
-                      }
-                      className="h-4 w-4 rounded accent-amber-400"
-                    />
-                  </label>
+                {/* Piece Sets */}
+                <section>
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400">Piece Sets</h4>
+                    <p className="text-[11px] text-slate-400">Crisp vector Staunton pieces with tailored visual styles.</p>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                    {PIECE_SETS.map((set) => {
+                      const isSelected = preferences.pieceSet === set.id;
+                      return (
+                        <button
+                          key={set.id}
+                          type="button"
+                          onClick={() => onUpdatePreferences({ ...preferences, pieceSet: set.id })}
+                          className={`rounded-xl border p-2.5 text-center transition-all ${
+                            isSelected
+                              ? 'border-amber-400 bg-amber-400/10 ring-1 ring-amber-400/80'
+                              : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-center justify-center gap-1.5 h-8">
+                            <div className="w-7 h-7">
+                              <ChessPiece type="k" color="w" pieceSet={set.id} />
+                            </div>
+                            <div className="w-7 h-7">
+                              <ChessPiece type="n" color="b" pieceSet={set.id} />
+                            </div>
+                          </div>
+                          <p className="mt-1 text-xs font-bold text-slate-300">{set.name}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
 
-                  <label className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-                    <span className="text-xs font-semibold text-slate-300">Rounded Corners</span>
-                    <input
-                      type="checkbox"
-                      checked={preferences.boardSettings.roundedCorners}
-                      onChange={(e) =>
-                        onUpdatePreferences({
-                          ...preferences,
-                          boardSettings: { ...preferences.boardSettings, roundedCorners: e.target.checked },
-                        })
-                      }
-                      className="h-4 w-4 rounded accent-amber-400"
-                    />
-                  </label>
-                </div>
-              </section>
+                {/* Highlight Styles */}
+                <section>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400">Highlight Styles</h4>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                    {HIGHLIGHT_STYLES.map((h) => {
+                      const isSelected = preferences.highlightStyle === h.id;
+                      return (
+                        <button
+                          key={h.id}
+                          type="button"
+                          onClick={() => onUpdatePreferences({ ...preferences, highlightStyle: h.id })}
+                          className={`rounded-xl border p-3 text-left transition-all ${
+                            isSelected
+                              ? 'border-amber-400 bg-amber-400/10'
+                              : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
+                          }`}
+                        >
+                          <span className="text-xs font-bold text-white">{h.name}</span>
+                          <p className="text-[11px] text-slate-400">{h.desc}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+
+                {/* UI Themes */}
+                <section>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400">Application UI Themes</h4>
+                  <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                    {UI_THEMES.map((t) => {
+                      const isSelected = preferences.uiTheme === t.id;
+                      return (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => handleUiThemeChange(t.id)}
+                          className={`flex items-center gap-2.5 rounded-xl border p-2.5 transition-all ${
+                            isSelected
+                              ? 'border-amber-400 bg-amber-400/10'
+                              : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
+                          }`}
+                        >
+                          <span className="h-5 w-5 rounded-full border border-slate-700 shadow" style={{ backgroundColor: t.bg }} />
+                          <span className="text-xs font-bold text-white truncate">{t.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+
+                {/* Board Display Elements */}
+                <section>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400">Display Options</h4>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <label className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                      <span className="text-xs font-semibold text-slate-300">Board Coordinates</span>
+                      <input
+                        type="checkbox"
+                        checked={preferences.boardSettings.coordinates}
+                        onChange={(e) =>
+                          onUpdatePreferences({
+                            ...preferences,
+                            boardSettings: { ...preferences.boardSettings, coordinates: e.target.checked },
+                          })
+                        }
+                        className="h-4 w-4 rounded accent-amber-400"
+                      />
+                    </label>
+
+                    <label className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                      <span className="text-xs font-semibold text-slate-300">Coordinate Size</span>
+                      <select
+                        value={preferences.boardSettings.coordinateStyle}
+                        onChange={(e) =>
+                          onUpdatePreferences({
+                            ...preferences,
+                            boardSettings: {
+                              ...preferences.boardSettings,
+                              coordinateStyle: e.target.value as 'inside' | 'outside' | 'small' | 'large',
+                            },
+                          })
+                        }
+                        className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-white"
+                      >
+                        <option value="inside">Standard</option>
+                        <option value="small">Small</option>
+                        <option value="large">Large</option>
+                      </select>
+                    </label>
+
+                    <label className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                      <span className="text-xs font-semibold text-slate-300">Board Border & Shell</span>
+                      <input
+                        type="checkbox"
+                        checked={preferences.boardSettings.boardBorder}
+                        onChange={(e) =>
+                          onUpdatePreferences({
+                            ...preferences,
+                            boardSettings: { ...preferences.boardSettings, boardBorder: e.target.checked },
+                          })
+                        }
+                        className="h-4 w-4 rounded accent-amber-400"
+                      />
+                    </label>
+
+                    <label className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                      <span className="text-xs font-semibold text-slate-300">Rounded Corners</span>
+                      <input
+                        type="checkbox"
+                        checked={preferences.boardSettings.roundedCorners}
+                        onChange={(e) =>
+                          onUpdatePreferences({
+                            ...preferences,
+                            boardSettings: { ...preferences.boardSettings, roundedCorners: e.target.checked },
+                          })
+                        }
+                        className="h-4 w-4 rounded accent-amber-400"
+                      />
+                    </label>
+                  </div>
+                </section>
+              </div>
             </div>
           )}
 
@@ -721,22 +854,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           )}
         </div>
-
-        {/* Locked Modal Notice */}
-        {lockedModalNotice && (
-          <div className="border-t border-slate-800 bg-slate-950 p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold text-amber-300">{lockedModalNotice}</p>
-              <button
-                type="button"
-                onClick={() => setLockedModalNotice(null)}
-                className="action-button action-secondary px-3 py-1 text-xs"
-              >
-                Dismiss
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* Footer */}
         <div className="flex justify-end border-t border-slate-800 bg-slate-950/60 px-6 py-3">

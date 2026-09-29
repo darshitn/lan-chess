@@ -46,9 +46,13 @@ describe('WaitingPanel component', () => {
     await act(async () => {
       root.render(<WaitingPanel roomCode="UY3J" hostUrl="http://192.168.1.71:3001" />);
     });
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    });
+    // Wait for dynamic import('qrcode') and state update
+    for (let i = 0; i < 20; i++) {
+      if (container.querySelector('[data-testid="room-invite-qr"]')) break;
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+    }
     const image = container.querySelector<HTMLImageElement>('[data-testid="room-invite-qr"]');
     expect(image?.src).toMatch(/^data:image\/png;base64,/);
     expect(image?.alt).toContain('UY3J');

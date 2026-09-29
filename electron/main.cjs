@@ -247,9 +247,29 @@ function createWindow() {
     return { action: 'deny' };
   });
 
-  mainWindow.webContents.session.setPermissionRequestHandler((_wc, permission, callback) => {
-    log('permission denied:', permission);
+  mainWindow.webContents.session.setPermissionRequestHandler((wc, permission, callback, details) => {
+    const isMainWindow = Boolean(mainWindow && wc && wc.id === mainWindow.webContents.id);
+    const requestingUrl = details?.requestingUrl || (wc ? wc.getURL() : '');
+    const isTrustedUrl = Boolean(requestingUrl && isAllowedNavigation(requestingUrl, allowedOrigins));
+
+    if (permission === 'fullscreen' && isMainWindow && isTrustedUrl) {
+      callback(true);
+      return;
+    }
+    log('permission denied:', permission, { isMainWindow, requestingUrl });
     callback(false);
+  });
+
+  mainWindow.webContents.session.setPermissionCheckHandler((wc, permission, requestingOrigin) => {
+    const isMainWindow = Boolean(mainWindow && wc && wc.id === mainWindow.webContents.id);
+    const isTrustedOrigin = Boolean(
+      requestingOrigin && allowedOrigins.some((origin) => origin === requestingOrigin)
+    );
+
+    if (permission === 'fullscreen' && isMainWindow && isTrustedOrigin) {
+      return true;
+    }
+    return false;
   });
 
   mainWindow.on('closed', () => {

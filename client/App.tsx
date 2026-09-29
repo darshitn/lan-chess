@@ -786,174 +786,137 @@ export function App() {
     setSavedGames(getSavedGames());
   };
 
-  // RENDER: Review View
-  if (currentView === 'review' && reviewGame) {
-    return (
-      <GameReview
-        game={reviewGame}
-        theme={activeTheme}
-        pieceSet={preferences.pieceSet}
-        highlightStyle={preferences.highlightStyle}
-        boardSettings={preferences.boardSettings}
-        onExitReview={() => setCurrentView('play')}
-      />
-    );
-  }
-
-  // RENDER: History View
-  if (currentView === 'history') {
-    return (
-      <div className="min-h-screen pb-10">
-        <Navigation
-          currentView={currentView}
-          onNavigate={(view) => setCurrentView(view)}
-          onOpenSettings={() => setIsSettingsOpen(true)}
-        />
-        <HistoryView
-          games={savedGames}
-          playerName={preferences.playerName}
-          onSelectGame={handleSelectHistoryGame}
-          onDeleteGame={handleDeleteHistoryGame}
-          onToggleFavorite={handleToggleFavoriteHistoryGame}
-          onBackToPlay={() => setCurrentView('play')}
-        />
-        <SettingsModal
-          isOpen={isSettingsOpen}
-          onClose={() => setIsSettingsOpen(false)}
-          preferences={preferences}
-          customThemes={customThemes}
-          onUpdatePreferences={handleUpdatePreferences}
-          onSaveCustomTheme={handleSaveCustomTheme}
-          onDeleteCustomTheme={handleDeleteCustomTheme}
-          isGameActive={isGameActive}
-        />
-      </div>
-    );
-  }
-
-  // RENDER: Practice Sandbox View
-  if (currentView === 'practice') {
-    return (
-      <div className="min-h-screen pb-10">
-        <Navigation
-          currentView={currentView}
-          onNavigate={(view) => setCurrentView(view)}
-          onOpenSettings={() => setIsSettingsOpen(true)}
-        />
-        <PracticeBoard
-          theme={activeTheme}
-          pieceSet={preferences.pieceSet}
-          highlightStyle={preferences.highlightStyle}
-          boardSettings={preferences.boardSettings}
-          onBackToPlay={() => setCurrentView('play')}
-        />
-        <SettingsModal
-          isOpen={isSettingsOpen}
-          onClose={() => setIsSettingsOpen(false)}
-          preferences={preferences}
-          customThemes={customThemes}
-          onUpdatePreferences={handleUpdatePreferences}
-          onSaveCustomTheme={handleSaveCustomTheme}
-          onDeleteCustomTheme={handleDeleteCustomTheme}
-          isGameActive={isGameActive}
-        />
-      </div>
-    );
-  }
-
-  // RENDER: Play vs Computer View
-  if (currentView === 'computer' && computerConfig) {
-    return (
-      <PlayVsComputer
-        initialConfig={computerConfig}
-        theme={activeTheme}
-        pieceSet={preferences.pieceSet}
-        highlightStyle={preferences.highlightStyle}
-        boardSettings={preferences.boardSettings}
-        soundSettings={preferences.sound}
-        onBackToLobby={() => setCurrentView('play')}
-        onReviewGame={(game) => {
-          setReviewGame(game);
-          setCurrentView('review');
-        }}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-        onGameActiveChange={setIsComputerGameActive}
-      />
-    );
-  }
-
-  // RENDER: Puzzles View
-  if (currentView === 'puzzles') {
-    return (
-      <div className="min-h-screen pb-10">
-        <Navigation
-          currentView={currentView}
-          onNavigate={(view) => setCurrentView(view)}
-          onOpenSettings={() => setIsSettingsOpen(true)}
-        />
-        <PuzzlePlayer
-          theme={activeTheme}
-          pieceSet={preferences.pieceSet}
-          highlightStyle={preferences.highlightStyle}
-          boardSettings={preferences.boardSettings}
-          onBackToPlay={() => setCurrentView('play')}
-        />
-        <SettingsModal
-          isOpen={isSettingsOpen}
-          onClose={() => setIsSettingsOpen(false)}
-          preferences={preferences}
-          customThemes={customThemes}
-          onUpdatePreferences={handleUpdatePreferences}
-          onSaveCustomTheme={handleSaveCustomTheme}
-          onDeleteCustomTheme={handleDeleteCustomTheme}
-          isGameActive={isGameActive}
-        />
-      </div>
-    );
-  }
-
-  // RENDER: Lobby (when not in a room)
+  // RENDER: Non-room views (Review, History, Practice, Computer, Puzzles, Lobby)
   if (!gameState) {
-    return (
-      <div className="min-h-screen pb-10">
-        <Navigation
-          currentView={currentView}
-          onNavigate={(view) => setCurrentView(view)}
-          onOpenSettings={() => setIsSettingsOpen(true)}
+    let subviewContent: React.ReactNode = null;
+
+    if (currentView === 'review' && reviewGame) {
+      subviewContent = (
+        <GameReview
+          game={reviewGame}
+          theme={activeTheme}
+          pieceSet={preferences.pieceSet}
+          highlightStyle={preferences.highlightStyle}
+          boardSettings={preferences.boardSettings}
+          onExitReview={() => setCurrentView('play')}
         />
-
-        <div className="px-4">
-
-        <UpdateBanner
-          isGameActive={isGameActive}
-          onOpenSettings={() => setIsSettingsOpen(true)}
-        />
-
-        <Lobby
-          initialMode={invitedRoomCode ? 'join' : undefined}
-          playerName={preferences.playerName}
-          onNameChange={(name) => handleUpdatePreferences({ ...preferences, playerName: name })}
-          roomCode={roomCodeInput}
-          onRoomCodeChange={setRoomCodeInput}
-          timeControl={timeControl}
-          onTimeControlChange={handleTimeControlChange}
-          recentTimeControls={preferences.recentlyUsedTimeControls.filter(isKnownTimeControl)}
-          allowTakebacks={allowTakebacks}
-          onAllowTakebacksChange={setAllowTakebacks}
-          onCreateGame={handleCreateGame}
-          onJoinGame={handleJoinGame}
-          onJoinSpectator={handleJoinSpectator}
-          onStartComputerGame={(cfg) => {
-            setComputerConfig(cfg);
-            setCurrentView('computer');
+      );
+    } else if (currentView === 'history') {
+      subviewContent = (
+        <div className="min-h-screen pb-10">
+          <Navigation
+            currentView={currentView}
+            onNavigate={(view) => setCurrentView(view)}
+            onOpenSettings={() => setIsSettingsOpen(true)}
+          />
+          <HistoryView
+            games={savedGames}
+            playerName={preferences.playerName}
+            onSelectGame={handleSelectHistoryGame}
+            onDeleteGame={handleDeleteHistoryGame}
+            onToggleFavorite={handleToggleFavoriteHistoryGame}
+            onBackToPlay={() => setCurrentView('play')}
+          />
+        </div>
+      );
+    } else if (currentView === 'practice') {
+      subviewContent = (
+        <div className="min-h-screen pb-10">
+          <Navigation
+            currentView={currentView}
+            onNavigate={(view) => setCurrentView(view)}
+            onOpenSettings={() => setIsSettingsOpen(true)}
+          />
+          <PracticeBoard
+            theme={activeTheme}
+            pieceSet={preferences.pieceSet}
+            highlightStyle={preferences.highlightStyle}
+            boardSettings={preferences.boardSettings}
+            onBackToPlay={() => setCurrentView('play')}
+          />
+        </div>
+      );
+    } else if (currentView === 'computer' && computerConfig) {
+      subviewContent = (
+        <PlayVsComputer
+          initialConfig={computerConfig}
+          theme={activeTheme}
+          pieceSet={preferences.pieceSet}
+          highlightStyle={preferences.highlightStyle}
+          boardSettings={preferences.boardSettings}
+          soundSettings={preferences.sound}
+          onBackToLobby={() => setCurrentView('play')}
+          onReviewGame={(game) => {
+            setReviewGame(game);
+            setCurrentView('review');
           }}
           onOpenSettings={() => setIsSettingsOpen(true)}
-          hostUrl={hostUrl}
-          error={error}
-          isConnecting={connectionStatus === 'connecting'}
+          onGameActiveChange={setIsComputerGameActive}
         />
+      );
+    } else if (currentView === 'puzzles') {
+      subviewContent = (
+        <div className="min-h-screen pb-10">
+          <Navigation
+            currentView={currentView}
+            onNavigate={(view) => setCurrentView(view)}
+            onOpenSettings={() => setIsSettingsOpen(true)}
+          />
+          <PuzzlePlayer
+            theme={activeTheme}
+            pieceSet={preferences.pieceSet}
+            highlightStyle={preferences.highlightStyle}
+            boardSettings={preferences.boardSettings}
+            onBackToPlay={() => setCurrentView('play')}
+          />
         </div>
+      );
+    } else {
+      subviewContent = (
+        <div className="min-h-screen pb-10">
+          <Navigation
+            currentView={currentView}
+            onNavigate={(view) => setCurrentView(view)}
+            onOpenSettings={() => setIsSettingsOpen(true)}
+          />
 
+          <div className="px-4">
+            <UpdateBanner
+              isGameActive={isGameActive}
+              onOpenSettings={() => setIsSettingsOpen(true)}
+            />
+
+            <Lobby
+              initialMode={invitedRoomCode ? 'join' : undefined}
+              playerName={preferences.playerName}
+              onNameChange={(name) => handleUpdatePreferences({ ...preferences, playerName: name })}
+              roomCode={roomCodeInput}
+              onRoomCodeChange={setRoomCodeInput}
+              timeControl={timeControl}
+              onTimeControlChange={handleTimeControlChange}
+              recentTimeControls={preferences.recentlyUsedTimeControls.filter(isKnownTimeControl)}
+              allowTakebacks={allowTakebacks}
+              onAllowTakebacksChange={setAllowTakebacks}
+              onCreateGame={handleCreateGame}
+              onJoinGame={handleJoinGame}
+              onJoinSpectator={handleJoinSpectator}
+              onStartComputerGame={(cfg) => {
+                setComputerConfig(cfg);
+                setCurrentView('computer');
+              }}
+              onOpenSettings={() => setIsSettingsOpen(true)}
+              hostUrl={hostUrl}
+              error={error}
+              isConnecting={connectionStatus === 'connecting'}
+            />
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <>
+        {subviewContent}
         <SettingsModal
           isOpen={isSettingsOpen}
           onClose={() => setIsSettingsOpen(false)}
@@ -964,7 +927,7 @@ export function App() {
           onDeleteCustomTheme={handleDeleteCustomTheme}
           isGameActive={isGameActive}
         />
-      </div>
+      </>
     );
   }
 
@@ -1248,6 +1211,8 @@ export function App() {
               focusBoard={boardDisplay.focusBoard}
               isFullscreen={boardDisplay.isFullscreen}
               isFullscreenSupported={boardDisplay.isFullscreenSupported}
+              fullscreenError={boardDisplay.fullscreenError}
+              onClearFullscreenError={boardDisplay.clearFullscreenError}
               onSetSizeMode={boardDisplay.setSizeMode}
               onCustomSizeChange={boardDisplay.setCustomSize}
               onStepSize={(delta) => boardDisplay.stepCustomSize(delta, measuredBoard.currentSize)}

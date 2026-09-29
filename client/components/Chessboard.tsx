@@ -9,6 +9,7 @@ import type {
 } from '../types/preferences.js';
 import { FILES, RANKS, isLightSquare } from '../utils/chess-helpers.js';
 import { BoardAnnotations, type ArrowAnnotation } from './chess/BoardAnnotations.js';
+import { ChessPiece, type PieceSymbol } from './chess/ChessPiece.js';
 
 const PIECE_GLYPHS: Record<PlayerColor, Record<string, string>> = {
   w: { p: '♙', n: '♘', b: '♗', r: '♖', q: '♕', k: '♔' },
@@ -201,6 +202,8 @@ export const Chessboard: React.FC<ChessboardProps> = React.memo(({
         onMouseLeave={handleBoardMouseLeave}
         style={{
           ['--legal-color' as string]: theme?.legalMoveColor ?? 'rgba(15, 23, 42, 0.3)',
+          ['--board-light' as string]: theme?.lightSquare ?? '#ecead6',
+          ['--board-dark' as string]: theme?.darkSquare ?? '#607489',
         }}
       >
         {/* SVG Annotations Overlay */}
@@ -294,7 +297,7 @@ export const Chessboard: React.FC<ChessboardProps> = React.memo(({
                     />
                   )}
 
-                  {/* Piece glyph */}
+                  {/* Piece glyph / vector */}
                   {piece && (
                     <span
                       draggable={isInteractive}
@@ -303,7 +306,11 @@ export const Chessboard: React.FC<ChessboardProps> = React.memo(({
                       className={`piece piece-${piece.color}`}
                       style={pieceScale !== 1.0 ? { transform: `scale(${pieceScale})` } : undefined}
                     >
-                      {PIECE_GLYPHS[piece.color as PlayerColor][piece.type]}
+                      <ChessPiece
+                        type={piece.type as PieceSymbol}
+                        color={piece.color as PlayerColor}
+                        pieceSet={pieceSet}
+                      />
                     </span>
                   )}
                 </button>

@@ -6,6 +6,42 @@ import type {
 
 export const BUILTIN_BOARD_THEMES: BoardTheme[] = [
   {
+    id: 'slate',
+    name: 'Slate',
+    description: 'Neutral charcoal styling with ivory and muted-slate squares',
+    lightSquare: '#ecead6',
+    darkSquare: '#607489',
+    selectedSquare: '#7ecad0',
+    lastMoveSquare: '#9bb4c9',
+    legalMoveColor: 'rgba(15, 23, 42, 0.28)',
+    checkSquare: '#f87171',
+    checkmateSquare: '#dc2626',
+  },
+  {
+    id: 'ivory',
+    name: 'Ivory',
+    description: 'Warm cream and calming sage foliage tones',
+    lightSquare: '#f4f0e6',
+    darkSquare: '#7c8e77',
+    selectedSquare: '#c8d6af',
+    lastMoveSquare: '#d8e2cf',
+    legalMoveColor: 'rgba(28, 40, 28, 0.28)',
+    checkSquare: '#e55c57',
+    checkmateSquare: '#cc2929',
+  },
+  {
+    id: 'walnut',
+    name: 'Walnut',
+    description: 'Aged parchment and warm rich walnut woodgrain',
+    lightSquare: '#e8dcbf',
+    darkSquare: '#7f5539',
+    selectedSquare: '#e6a86c',
+    lastMoveSquare: '#c49a6c',
+    legalMoveColor: 'rgba(30, 20, 10, 0.32)',
+    checkSquare: '#dc2626',
+    checkmateSquare: '#991b1b',
+  },
+  {
     id: 'classic',
     name: 'Classic',
     description: 'Traditional tournament green and cream styling',
@@ -161,7 +197,7 @@ export const BUILTIN_BOARD_THEMES: BoardTheme[] = [
     checkSquare: '#e11d48',
     checkmateSquare: '#881337',
   },
-  // Premium preview themes (Locked)
+  // All built-in themes are fully unlocked
   {
     id: 'obsidian',
     name: 'Obsidian',
@@ -173,7 +209,6 @@ export const BUILTIN_BOARD_THEMES: BoardTheme[] = [
     legalMoveColor: 'rgba(255, 255, 255, 0.2)',
     checkSquare: '#ef4444',
     checkmateSquare: '#991b1b',
-    isLocked: true,
   },
   {
     id: 'royal-gold',
@@ -186,7 +221,6 @@ export const BUILTIN_BOARD_THEMES: BoardTheme[] = [
     legalMoveColor: 'rgba(234, 179, 8, 0.35)',
     checkSquare: '#f43f5e',
     checkmateSquare: '#be123c',
-    isLocked: true,
   },
   {
     id: 'carbon',
@@ -199,7 +233,6 @@ export const BUILTIN_BOARD_THEMES: BoardTheme[] = [
     legalMoveColor: 'rgba(255, 255, 255, 0.25)',
     checkSquare: '#ef4444',
     checkmateSquare: '#b91c1c',
-    isLocked: true,
   },
   {
     id: 'emerald',
@@ -212,7 +245,6 @@ export const BUILTIN_BOARD_THEMES: BoardTheme[] = [
     legalMoveColor: 'rgba(6, 95, 70, 0.3)',
     checkSquare: '#f43f5e',
     checkmateSquare: '#be123c',
-    isLocked: true,
   },
   {
     id: 'cyber-red',
@@ -225,7 +257,6 @@ export const BUILTIN_BOARD_THEMES: BoardTheme[] = [
     legalMoveColor: 'rgba(239, 68, 68, 0.4)',
     checkSquare: '#ff0033',
     checkmateSquare: '#990000',
-    isLocked: true,
   },
   {
     id: 'luxury-wood',
@@ -238,11 +269,37 @@ export const BUILTIN_BOARD_THEMES: BoardTheme[] = [
     legalMoveColor: 'rgba(96, 56, 19, 0.35)',
     checkSquare: '#e11d48',
     checkmateSquare: '#881337',
-    isLocked: true,
   },
 ];
 
 export const ONE_CLICK_PRESETS: OneClickPreset[] = [
+  {
+    id: 'preset-slate',
+    name: 'Slate',
+    description: 'Neutral charcoal UI, ivory & muted slate board, restrained teal accent',
+    themeId: 'slate',
+    pieceSet: 'classic',
+    highlightStyle: 'classic',
+    uiTheme: 'slate',
+  },
+  {
+    id: 'preset-ivory',
+    name: 'Ivory',
+    description: 'Warm off-white UI, cream & sage board, dark ink typography',
+    themeId: 'ivory',
+    pieceSet: 'classic',
+    highlightStyle: 'soft',
+    uiTheme: 'ivory',
+  },
+  {
+    id: 'preset-walnut',
+    name: 'Walnut',
+    description: 'Warm charcoal UI, parchment & walnut board, restrained copper accent',
+    themeId: 'walnut',
+    pieceSet: 'classic',
+    highlightStyle: 'classic',
+    uiTheme: 'walnut',
+  },
   {
     id: 'preset-classic',
     name: 'Classic Chess',
@@ -300,10 +357,10 @@ export const ONE_CLICK_PRESETS: OneClickPreset[] = [
 ];
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
-  activeThemeId: 'wooden',
+  activeThemeId: 'slate',
   pieceSet: 'classic',
   highlightStyle: 'classic',
-  uiTheme: 'dark',
+  uiTheme: 'slate',
   boardSettings: {
     pieceScale: 1.0,
     coordinates: true,
@@ -330,6 +387,17 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   recentlyUsedTimeControls: [],
 };
 
+export function resetAppearancePreferences(current: UserPreferences): UserPreferences {
+  return {
+    ...current,
+    activeThemeId: DEFAULT_PREFERENCES.activeThemeId,
+    pieceSet: DEFAULT_PREFERENCES.pieceSet,
+    highlightStyle: DEFAULT_PREFERENCES.highlightStyle,
+    uiTheme: DEFAULT_PREFERENCES.uiTheme,
+    boardSettings: { ...DEFAULT_PREFERENCES.boardSettings },
+  };
+}
+
 const STORAGE_KEYS = {
   PREFERENCES: 'lan-chess-user-preferences-v2',
   CUSTOM_THEMES: 'lan-chess-custom-board-themes-v2',
@@ -337,7 +405,7 @@ const STORAGE_KEYS = {
 
 const PIECE_SET_IDS = ['classic', 'modern', 'minimal', 'glass', 'wood', 'neon', 'cyber', 'silhouette'] as const;
 const HIGHLIGHT_STYLE_IDS = ['classic', 'soft', 'bright', 'minimal', 'neon'] as const;
-const UI_THEME_IDS = ['dark', 'light', 'midnight', 'oled', 'glass', 'cyber'] as const;
+const UI_THEME_IDS = ['slate', 'ivory', 'walnut', 'dark', 'light', 'midnight', 'oled', 'glass', 'cyber'] as const;
 const COORDINATE_STYLES = ['inside', 'outside', 'small', 'large'] as const;
 const ANIMATION_SPEEDS = ['instant', 'smooth', 'fast'] as const;
 const PREFERRED_COLORS = ['w', 'b', 'random'] as const;
@@ -493,15 +561,25 @@ export function getActiveBoardTheme(
   const all = getAllThemes(customThemes);
   const found = all.find((t) => t.id === themeId);
   // Stable fallback by id — never by array position.
-  return found ?? all.find((t) => t.id === 'wooden') ?? BUILTIN_BOARD_THEMES[0];
+  return found ?? all.find((t) => t.id === 'slate') ?? all.find((t) => t.id === 'wooden') ?? BUILTIN_BOARD_THEMES[0];
 }
 
 export function applyUiThemeToDom(themeId: string): void {
   if (typeof document === 'undefined') return;
   // Unknown theme ids from storage must not leave the document unstyled.
   const validIds: readonly string[] = UI_THEME_IDS;
-  const safeId = validIds.includes(themeId) ? themeId : 'dark';
+  const safeId = validIds.includes(themeId as (typeof UI_THEME_IDS)[number]) ? themeId : 'slate';
   const root = document.documentElement;
-  root.classList.remove('theme-dark', 'theme-light', 'theme-midnight', 'theme-oled', 'theme-glass', 'theme-cyber');
+  root.classList.remove(
+    'theme-slate',
+    'theme-ivory',
+    'theme-walnut',
+    'theme-dark',
+    'theme-light',
+    'theme-midnight',
+    'theme-oled',
+    'theme-glass',
+    'theme-cyber'
+  );
   root.classList.add(`theme-${safeId}`);
 }

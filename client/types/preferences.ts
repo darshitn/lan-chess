@@ -25,7 +25,16 @@ export type PieceSetId =
 
 export type HighlightStyleId = 'classic' | 'soft' | 'bright' | 'minimal' | 'neon';
 
-export type UiThemeId = 'dark' | 'light' | 'midnight' | 'oled' | 'glass' | 'cyber';
+export type UiThemeId =
+  | 'slate'
+  | 'ivory'
+  | 'walnut'
+  | 'dark'
+  | 'light'
+  | 'midnight'
+  | 'oled'
+  | 'glass'
+  | 'cyber';
 
 export interface BoardDisplaySettings {
   pieceScale: number; // 0.8 to 1.2

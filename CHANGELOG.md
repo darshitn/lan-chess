@@ -2,6 +2,27 @@
 
 All notable changes to LAN Chess are documented here.
 
+## [1.2.2] — 2026-09-29
+
+### Added — Product UI Polish, Themes & Customization
+- Cohesive, modern product UI design system featuring curated palettes (Slate, Warm Ivory, Heritage Walnut, Dark Amber, Clean Light, Midnight Blue, OLED Black, Frosted Glass, Cyber Neon).
+- Dedicated SVG piece set renderers (`Classic Staunton`, `Modern`, `Minimal`, `Glass`, `Wood`, `Neon`, `Cyber`, `Silhouette`).
+- One-click recommended presets and custom board builder with live preview and local storage persistence.
+- Refreshed dialogs (promotion modal, settings modal, waiting panel) and board controls.
+
+### Fixed — Computer View Settings Modal Mounting
+- Consolidated single root `SettingsModal` in `client/App.tsx`, resolving the defect where opening settings in Play vs Computer (and review/history) failed to mount the modal.
+- Guaranteed that opening, changing appearance, or closing settings during an active bot match preserves the board position, clocks, move history, and Stockfish engine session without restart.
+
+### Fixed — Fullscreen Reliability in Browser & Desktop
+- Hardened Electron fullscreen permissions in `electron/main.cjs` to strictly authorize the trusted LAN Chess main window webContents while rejecting arbitrary external origins.
+- Cross-browser Web Fullscreen API support including vendor prefixes (`webkit`, `moz`, `ms`), real-time synchronization with window events and `Escape` key exits, and an accessible inline warning banner (`role="alert"`) if fullscreen is rejected.
+- Added immediate resize synchronization on fullscreen transitions in `ResponsiveBoardFrame`.
+
+### Tests & Tooling
+- Expanded unit and integration test suite to 272 passing tests across 26 test files (added `client/components/training/PlayVsComputerSettings.test.tsx`, `client/components/chess/ChessPiece.test.tsx`, and expanded `client/components/BoardControls.test.tsx`, `client/services/board-display.test.ts`, `client/services/preferences.test.ts`).
+- Created and executed automated CDP end-to-end verification in the running Electron desktop app, validating active bot game settings toggles, theme changes, position preservation, fullscreen entry, button exit, re-entry, and Escape exit across bot and LAN games.
+
 ## [1.2.1] — 2026-09-28
 
 ### Added — QR Code LAN Match Joining

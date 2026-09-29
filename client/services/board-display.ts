@@ -66,6 +66,8 @@ export interface UseBoardDisplayReturn {
   focusBoard: boolean;
   isFullscreen: boolean;
   isFullscreenSupported: boolean;
+  fullscreenError: string | null;
+  clearFullscreenError: () => void;
   isFocusDrawerOpen: boolean;
   setSizeMode: (mode: BoardSizeMode) => void;
   setCustomSize: (size: number) => void;
@@ -76,6 +78,81 @@ export interface UseBoardDisplayReturn {
   openFocusDrawer: () => void;
   closeFocusDrawer: () => void;
   toggleFocusDrawer: () => void;
+}
+
+export function getFullscreenElement(doc = typeof document !== 'undefined' ? document : undefined): Element | null {
+  if (!doc) return null;
+  const d = doc as Document & {
+    webkitFullscreenElement?: Element;
+    mozFullScreenElement?: Element;
+    msFullscreenElement?: Element;
+  };
+  return d.fullscreenElement ?? d.webkitFullscreenElement ?? d.mozFullScreenElement ?? d.msFullscreenElement ?? null;
+}
+
+export function checkIsFullscreenSupported(doc = typeof document !== 'undefined' ? document : undefined): boolean {
+  if (!doc) return false;
+  const d = doc as Document & {
+    webkitFullscreenEnabled?: boolean;
+    mozFullScreenEnabled?: boolean;
+    msFullscreenEnabled?: boolean;
+  };
+  if (typeof d.fullscreenEnabled === 'boolean') return d.fullscreenEnabled;
+  if (typeof d.webkitFullscreenEnabled === 'boolean') return d.webkitFullscreenEnabled;
+  if (typeof d.mozFullScreenEnabled === 'boolean') return d.mozFullScreenEnabled;
+  if (typeof d.msFullscreenEnabled === 'boolean') return d.msFullscreenEnabled;
+  return false;
+}
+
+export async function requestFullscreenOnElement(element: HTMLElement): Promise<void> {
+  const el = element as HTMLElement & {
+    webkitRequestFullscreen?: () => Promise<void> | void;
+    webkitRequestFullScreen?: () => Promise<void> | void;
+    mozRequestFullScreen?: () => Promise<void> | void;
+    msRequestFullscreen?: () => Promise<void> | void;
+  };
+  if (typeof el.requestFullscreen === 'function') {
+    return el.requestFullscreen();
+  }
+  if (typeof el.webkitRequestFullscreen === 'function') {
+    return Promise.resolve(el.webkitRequestFullscreen());
+  }
+  if (typeof el.webkitRequestFullScreen === 'function') {
+    return Promise.resolve(el.webkitRequestFullScreen());
+  }
+  if (typeof el.mozRequestFullScreen === 'function') {
+    return Promise.resolve(el.mozRequestFullScreen());
+  }
+  if (typeof el.msRequestFullscreen === 'function') {
+    return Promise.resolve(el.msRequestFullscreen());
+  }
+  throw new Error('Fullscreen API is not supported in this browser environment.');
+}
+
+export async function exitFullscreenOnDocument(doc = typeof document !== 'undefined' ? document : undefined): Promise<void> {
+  if (!doc) return;
+  const d = doc as Document & {
+    webkitExitFullscreen?: () => Promise<void> | void;
+    webkitCancelFullScreen?: () => Promise<void> | void;
+    mozCancelFullScreen?: () => Promise<void> | void;
+    msExitFullscreen?: () => Promise<void> | void;
+  };
+  if (typeof d.exitFullscreen === 'function') {
+    return d.exitFullscreen();
+  }
+  if (typeof d.webkitExitFullscreen === 'function') {
+    return Promise.resolve(d.webkitExitFullscreen());
+  }
+  if (typeof d.webkitCancelFullScreen === 'function') {
+    return Promise.resolve(d.webkitCancelFullScreen());
+  }
+  if (typeof d.mozCancelFullScreen === 'function') {
+    return Promise.resolve(d.mozCancelFullScreen());
+  }
+  if (typeof d.msExitFullscreen === 'function') {
+    return Promise.resolve(d.msExitFullscreen());
+  }
+  throw new Error('Fullscreen exit is not supported in this browser environment.');
 }
 
 export function useBoardDisplay(
@@ -90,31 +167,51 @@ export function useBoardDisplay(
   });
 
   const [isFullscreen, setIsFullscreen] = useState<boolean>(() => {
-    if (typeof document === 'undefined') return false;
-    return Boolean(document.fullscreenElement);
+    return Boolean(getFullscreenElement());
   });
 
+  const [fullscreenError, setFullscreenError] = useState<string | null>(null);
   const [isFocusDrawerOpen, setIsFocusDrawerOpen] = useState<boolean>(false);
 
-  const isFullscreenSupported =
-    typeof document !== 'undefined' &&
-    (Boolean(document.fullscreenEnabled) ||
-      'webkitFullscreenEnabled' in document);
+  const isFullscreenSupported = checkIsFullscreenSupported();
 
-  // Sync fullscreen state
+  const clearFullscreenError = useCallback(() => {
+    setFullscreenError(null);
+  }, []);
+
+  // Sync fullscreen state & handle browser events
   useEffect(() => {
     if (typeof document === 'undefined') return;
 
     const handleFullscreenChange = () => {
-      setIsFullscreen(Boolean(document.fullscreenElement));
+      setIsFullscreen(Boolean(getFullscreenElement()));
+      setFullscreenError(null);
+    };
+
+    const handleFullscreenError = () => {
+      setFullscreenError('Fullscreen request was declined or blocked by browser security policy.');
     };
 
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+
+    document.addEventListener('fullscreenerror', handleFullscreenError);
+    document.addEventListener('webkitfullscreenerror', handleFullscreenError);
+    document.addEventListener('mozfullscreenerror', handleFullscreenError);
+    document.addEventListener('MSFullscreenError', handleFullscreenError);
 
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
       document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+
+      document.removeEventListener('fullscreenerror', handleFullscreenError);
+      document.removeEventListener('webkitfullscreenerror', handleFullscreenError);
+      document.removeEventListener('mozfullscreenerror', handleFullscreenError);
+      document.removeEventListener('MSFullscreenError', handleFullscreenError);
     };
   }, []);
 
@@ -199,14 +296,24 @@ export function useBoardDisplay(
 
   const toggleFullscreen = useCallback(async () => {
     if (typeof document === 'undefined') return;
+    if (!checkIsFullscreenSupported()) {
+      setFullscreenError('Fullscreen is not supported or is blocked in this browser environment.');
+      return;
+    }
     try {
-      if (document.fullscreenElement) {
-        await document.exitFullscreen();
+      setFullscreenError(null);
+      if (getFullscreenElement()) {
+        await exitFullscreenOnDocument();
       } else {
-        await document.documentElement.requestFullscreen();
+        await requestFullscreenOnElement(document.documentElement);
       }
-    } catch {
-      // Fullscreen request might be rejected by browser permission / gesture policy
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error && err.message
+          ? err.message
+          : 'Fullscreen request was declined or blocked by browser permissions.';
+      console.warn('[board-display] Fullscreen toggle failed:', message);
+      setFullscreenError(message);
     }
   }, []);
 
@@ -221,6 +328,8 @@ export function useBoardDisplay(
     focusBoard: displayPrefs.focusBoard,
     isFullscreen,
     isFullscreenSupported,
+    fullscreenError,
+    clearFullscreenError,
     isFocusDrawerOpen,
     setSizeMode,
     setCustomSize,

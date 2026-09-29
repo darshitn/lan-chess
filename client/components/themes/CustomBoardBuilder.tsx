@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import type { BoardTheme } from '../../types/preferences.js';
+import { ChessPiece, type PieceSymbol } from '../chess/ChessPiece.js';
+import type { PlayerColor } from '../../../shared/types.js';
 
 interface CustomBoardBuilderProps {
   customThemes: BoardTheme[];
@@ -21,6 +23,23 @@ const DEFAULT_BUILDER_STATE: Omit<BoardTheme, 'id'> = {
 };
 
 const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
+
+function hexToLuminance(hex: string): number {
+  if (!HEX_COLOR_PATTERN.test(hex)) return 0.5;
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const toLinear = (c: number) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+  return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+}
+
+function calculateContrastRatio(hex1: string, hex2: string): number {
+  const l1 = hexToLuminance(hex1);
+  const l2 = hexToLuminance(hex2);
+  const brighter = Math.max(l1, l2);
+  const darker = Math.min(l1, l2);
+  return (brighter + 0.05) / (darker + 0.05);
+}
 
 function newThemeId(): string {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -107,24 +126,35 @@ export const CustomBoardBuilder: React.FC<CustomBoardBuilderProps> = ({
   };
 
   // 4x4 Mini preview sample squares
-  const sampleSquares = [
-    { row: 0, col: 0, type: 'light', label: 'r' },
-    { row: 0, col: 1, type: 'dark', label: 'n' },
-    { row: 0, col: 2, type: 'light', label: 'b' },
-    { row: 0, col: 3, type: 'dark', label: 'q' },
+  const sampleSquares: Array<{
+    row: number;
+    col: number;
+    type: 'light' | 'dark';
+    isSelected?: boolean;
+    isLastMove?: boolean;
+    isCheck?: boolean;
+    piece?: { type: PieceSymbol; color: PlayerColor };
+  }> = [
+    { row: 0, col: 0, type: 'light', piece: { type: 'r', color: 'b' } },
+    { row: 0, col: 1, type: 'dark', piece: { type: 'n', color: 'b' } },
+    { row: 0, col: 2, type: 'light', piece: { type: 'b', color: 'b' } },
+    { row: 0, col: 3, type: 'dark', piece: { type: 'q', color: 'b' } },
     { row: 1, col: 0, type: 'dark', isLastMove: true },
     { row: 1, col: 1, type: 'light' },
     { row: 1, col: 2, type: 'dark' },
-    { row: 1, col: 3, type: 'light', isCheck: true, label: 'k' },
+    { row: 1, col: 3, type: 'light', isCheck: true, piece: { type: 'k', color: 'b' } },
     { row: 2, col: 0, type: 'light' },
-    { row: 2, col: 1, type: 'dark', isSelected: true, label: 'p' },
+    { row: 2, col: 1, type: 'dark', isSelected: true, piece: { type: 'p', color: 'b' } },
     { row: 2, col: 2, type: 'light' },
     { row: 2, col: 3, type: 'dark' },
-    { row: 3, col: 0, type: 'dark', label: 'R' },
+    { row: 3, col: 0, type: 'dark', piece: { type: 'r', color: 'w' } },
     { row: 3, col: 1, type: 'light' },
-    { row: 3, col: 2, type: 'dark', label: 'B' },
-    { row: 3, col: 3, type: 'light', label: 'K' },
+    { row: 3, col: 2, type: 'dark', piece: { type: 'b', color: 'w' } },
+    { row: 3, col: 3, type: 'light', piece: { type: 'k', color: 'w' } },
   ];
+
+  const squareContrast = calculateContrastRatio(lightSquare, darkSquare);
+  const hasLowContrast = squareContrast < 1.35;
 
   return (
     <div className="space-y-6">
@@ -248,6 +278,16 @@ export const CustomBoardBuilder: React.FC<CustomBoardBuilderProps> = ({
             </div>
           </div>
 
+          {hasLowContrast && (
+            <div className="rounded-lg bg-amber-950/70 p-2.5 text-xs text-amber-200 border border-amber-700/60 flex items-start gap-2">
+              <span className="text-sm leading-none">⚠️</span>
+              <div>
+                <p className="font-semibold text-amber-300">Low square contrast ({squareContrast.toFixed(1)}:1)</p>
+                <p className="text-[11px] text-amber-200/80">Squares may be difficult to distinguish during fast play. Consider widening the brightness difference.</p>
+              </div>
+            </div>
+          )}
+
           {colorError && (
             <p className="rounded-lg bg-rose-950/80 p-2 text-xs text-rose-300 border border-rose-800/60" role="alert">
               {colorError}
@@ -287,20 +327,12 @@ export const CustomBoardBuilder: React.FC<CustomBoardBuilderProps> = ({
                   <div
                     key={i}
                     style={{ backgroundColor: bg }}
-                    className="flex items-center justify-center font-serif text-xl"
+                    className="flex items-center justify-center p-0.5 relative"
                   >
-                    {sq.label && (
-                      <span className={sq.label === sq.label.toUpperCase() ? 'text-white drop-shadow' : 'text-slate-900 drop-shadow'}>
-                        {sq.label === 'r' && '♜'}
-                        {sq.label === 'n' && '♞'}
-                        {sq.label === 'b' && '♝'}
-                        {sq.label === 'q' && '♛'}
-                        {sq.label === 'k' && '♚'}
-                        {sq.label === 'p' && '♟'}
-                        {sq.label === 'R' && '♖'}
-                        {sq.label === 'B' && '♗'}
-                        {sq.label === 'K' && '♔'}
-                      </span>
+                    {sq.piece && (
+                      <div className="w-9 h-9 flex items-center justify-center">
+                        <ChessPiece type={sq.piece.type} color={sq.piece.color} />
+                      </div>
                     )}
                   </div>
                 );
@@ -329,9 +361,19 @@ export const CustomBoardBuilder: React.FC<CustomBoardBuilderProps> = ({
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-semibold text-white">{theme.name}</span>
-                    <div className="flex h-5 w-10 overflow-hidden rounded border border-slate-700">
-                      <div className="w-1/2" style={{ backgroundColor: theme.lightSquare }} />
-                      <div className="w-1/2" style={{ backgroundColor: theme.darkSquare }} />
+                    <div className="h-8 w-8 overflow-hidden rounded border border-slate-700 shadow-inner grid grid-cols-2 grid-rows-2">
+                      <div className="flex items-center justify-center p-0.5" style={{ backgroundColor: theme.lightSquare }}>
+                        <ChessPiece type="n" color="w" className="w-full h-full" />
+                      </div>
+                      <div className="flex items-center justify-center p-0.5" style={{ backgroundColor: theme.darkSquare }}>
+                        <ChessPiece type="p" color="b" className="w-full h-full" />
+                      </div>
+                      <div className="flex items-center justify-center p-0.5" style={{ backgroundColor: theme.darkSquare }}>
+                        <ChessPiece type="r" color="w" className="w-full h-full" />
+                      </div>
+                      <div className="flex items-center justify-center p-0.5" style={{ backgroundColor: theme.lightSquare }}>
+                        <ChessPiece type="k" color="b" className="w-full h-full" />
+                      </div>
                     </div>
                   </div>
                   <div className="mt-3 flex gap-1.5">
