@@ -54,7 +54,7 @@ LAN Chess is a local-network multiplayer chess game built with React, Vite, Expr
 - Stockfish analysis: per-move best move, centipawn loss, classification (brilliant → blunder), accuracy estimates, genuine openings-table "book" detection; engine failures are shown honestly, never masked
 - Practice sandbox with position setup and live engine evaluation
 - Puzzle trainer with **1,320 rated tactical puzzles** (Lichess CC0 database, bundled and validated offline), difficulty filters, and multi-move tactics where the opponent's replies play out
-- **19 board themes** (13 free + 6 locked previews — including the gray "Stone" board), 8 piece sets, 5 highlight styles, **6 UI themes** (Dark Slate, Clean Light, Midnight Blue, OLED Black, Frosted Glass, Cyber Neon — full design-token restyling), custom board builder — all persisted locally and never affecting game state
+- **19 board themes** (including the gray "Stone" board), **8 dedicated piece sets** (Classic Staunton, Modern, Minimal, Glass, Wood, Neon, Cyber, Silhouette), 5 highlight styles, curated UI palettes, custom board builder — all persisted locally and never affecting game state
 - Local player statistics (win rate, openings, records)
 
 ## Tech Stack
@@ -63,7 +63,7 @@ LAN Chess is a local-network multiplayer chess game built with React, Vite, Expr
 - **Backend:** Node.js + Express + Socket.IO (in-memory authoritative state)
 - **Rules engine:** chess.js (validated on both sides; the server is authoritative)
 - **Engine:** Stockfish (WASM build from `stockfish.js`) in a Web Worker with a strict search lifecycle
-- **Tests:** Vitest (258 tests across 24 test files — server, client, desktop security, updater, offline engine & controller, board sizing & controls)
+- **Tests:** Vitest (272 tests across 26 test files — server, client, desktop security, updater, offline engine & controller, board sizing & controls, themes, piece rendering)
 
 ## Architecture
 
@@ -116,7 +116,7 @@ The desktop app features background update checks via `electron-updater` and Git
 | Script | What it does |
 | --- | --- |
 | `npm run dev` | Concurrent dev server + client with hot reload |
-| `npm test` | Vitest test suite (258 tests across 24 test files) |
+| `npm test` | Vitest test suite (272 tests across 26 test files) |
 | `npm run typecheck` | `tsc --noEmit` over the whole project |
 | `npm run build` | Typecheck, then client + server production build |
 | `npm run desktop:assets` | Stage bundled server and static client for Electron |
