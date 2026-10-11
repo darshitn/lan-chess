@@ -786,8 +786,9 @@ export function App() {
     setSavedGames(getSavedGames());
   };
 
-  // RENDER: Non-room views (Review, History, Practice, Computer, Puzzles, Lobby)
-  if (!gameState) {
+  // Review must also render over a finished LAN room: both players still have
+  // gameState while they remain connected after the game ends.
+  if (!gameState || (currentView === 'review' && reviewGame)) {
     let subviewContent: React.ReactNode = null;
 
     if (currentView === 'review' && reviewGame) {

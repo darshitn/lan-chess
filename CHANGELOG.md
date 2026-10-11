@@ -2,6 +2,13 @@
 
 All notable changes to LAN Chess are documented here.
 
+## [1.2.3] — 2026-10-11
+
+### Fixed — Post-game LAN review
+- The Review Game & Analysis button now opens the replay and Stockfish analysis view for both players while they remain connected to a finished LAN room. Exiting review returns to the finished game, preserving rematch options.
+- Added host and guest regression tests covering review entry, move replay, and return to the room.
+- Updated the dependency lockfile to patched `proxy-addr` and `source-map-js` versions after the production audit reported advisories.
+
 ## [1.2.2] — 2026-09-29
 
 ### Added — Product UI Polish, Themes & Customization

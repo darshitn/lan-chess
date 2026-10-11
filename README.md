@@ -1,4 +1,4 @@
-# LAN Chess — v1.2.2
+# LAN Chess — v1.2.3
 
 LAN Chess is a local-network multiplayer chess game built with React, Vite, Express, Socket.IO, and chess.js — no external chess service required. Play over LAN with friends, or play offline against the built-in Stockfish engine.
 
@@ -63,7 +63,7 @@ LAN Chess is a local-network multiplayer chess game built with React, Vite, Expr
 - **Backend:** Node.js + Express + Socket.IO (in-memory authoritative state)
 - **Rules engine:** chess.js (validated on both sides; the server is authoritative)
 - **Engine:** Stockfish (WASM build from `stockfish.js`) in a Web Worker with a strict search lifecycle
-- **Tests:** Vitest (272 tests across 26 test files — server, client, desktop security, updater, offline engine & controller, board sizing & controls, themes, piece rendering)
+- **Tests:** Vitest (274 tests across 27 test files — server, client, desktop security, updater, offline engine & controller, board sizing & controls, themes, piece rendering)
 
 ## Architecture
 
@@ -95,7 +95,7 @@ The server prints the LAN URL (e.g. `http://192.168.1.25:3001`) — share it wit
 
 ### Desktop Application (Windows)
 
-Download the installer from the [v1.2.2 Release](https://github.com/darshitn/lan-chess/releases/tag/v1.2.2) ([`LAN-Chess-Setup-1.2.2.exe`](https://github.com/darshitn/lan-chess/releases/download/v1.2.2/LAN-Chess-Setup-1.2.2.exe)).
+Download the installer from the [v1.2.3 Release](https://github.com/darshitn/lan-chess/releases/tag/v1.2.3) ([`LAN-Chess-Setup-1.2.3.exe`](https://github.com/darshitn/lan-chess/releases/download/v1.2.3/LAN-Chess-Setup-1.2.3.exe)).
 
 > [!NOTE]
 > - **In-App Updating from v1.2.0**: Existing v1.2.0 installations can receive this update automatically via the in-app updater (check **Settings → Updates**).
@@ -116,7 +116,7 @@ The desktop app features background update checks via `electron-updater` and Git
 | Script | What it does |
 | --- | --- |
 | `npm run dev` | Concurrent dev server + client with hot reload |
-| `npm test` | Vitest test suite (272 tests across 26 test files) |
+| `npm test` | Vitest test suite (274 tests across 27 test files) |
 | `npm run typecheck` | `tsc --noEmit` over the whole project |
 | `npm run build` | Typecheck, then client + server production build |
 | `npm run desktop:assets` | Stage bundled server and static client for Electron |
