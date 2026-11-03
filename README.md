@@ -1,8 +1,10 @@
-# LAN Chess — v1.2.3
+# LAN Chess — v1.2.4
 
 LAN Chess is a local-network multiplayer chess game built with React, Vite, Express, Socket.IO, and chess.js — no external chess service required. Play over LAN with friends, or play offline against the built-in Stockfish engine.
 
 ## Features
+
+- **Replay during a game:** Previous/Next arrows below the board let players and spectators browse earlier positions in LAN and computer games. The live match and clocks continue; use **Live** to return to the latest position and resume moving.
 
 ### Play — LAN Multiplayer
 - Real-time LAN multiplayer with visible LAN invitation: prominent room code, complete host LAN URL (e.g., `http://192.168.1.71:3001`), interactive **QR code room joining** (`?room=CODE`) that automatically prefills the Join form on scanned mobile devices, and clear 3-step connection instructions; never tells remote users to open localhost or 127.0.0.1.
@@ -63,7 +65,7 @@ LAN Chess is a local-network multiplayer chess game built with React, Vite, Expr
 - **Backend:** Node.js + Express + Socket.IO (in-memory authoritative state)
 - **Rules engine:** chess.js (validated on both sides; the server is authoritative)
 - **Engine:** Stockfish (WASM build from `stockfish.js`) in a Web Worker with a strict search lifecycle
-- **Tests:** Vitest (274 tests across 27 test files — server, client, desktop security, updater, offline engine & controller, board sizing & controls, themes, piece rendering)
+- **Tests:** Vitest — server, client, desktop security, updater, offline engine & controller, live replay, board sizing & controls, themes, piece rendering.
 
 ## Architecture
 
@@ -95,7 +97,7 @@ The server prints the LAN URL (e.g. `http://192.168.1.25:3001`) — share it wit
 
 ### Desktop Application (Windows)
 
-Download the installer from the [v1.2.3 Release](https://github.com/darshitn/lan-chess/releases/tag/v1.2.3) ([`LAN-Chess-Setup-1.2.3.exe`](https://github.com/darshitn/lan-chess/releases/download/v1.2.3/LAN-Chess-Setup-1.2.3.exe)).
+Download the installer from the [v1.2.4 Release](https://github.com/darshitn/lan-chess/releases/tag/v1.2.4) ([`LAN-Chess-Setup-1.2.4.exe`](https://github.com/darshitn/lan-chess/releases/download/v1.2.4/LAN-Chess-Setup-1.2.4.exe)). Existing updater-enabled desktop installations can download the patch from Settings → Updates and restart to apply it.
 
 > [!NOTE]
 > - **In-App Updating from v1.2.0**: Existing v1.2.0 installations can receive this update automatically via the in-app updater (check **Settings → Updates**).
@@ -109,14 +111,16 @@ npm run electron:build   # build and generate the Windows NSIS installer
 For detailed desktop architecture, see [DESKTOP_APP.md](DESKTOP_APP.md).
 
 #### In-App Updates
-The desktop app features background update checks via `electron-updater` and GitHub Releases, with download progress, support for differential transfers when available, and a user-controlled restart action. To prevent match disruption, update restarts are locked out during active LAN or computer games, including multiplayer reconnection pauses. Delivery through the live GitHub update feed is supported starting from v1.2.0 installations.
+The desktop app checks for updates shortly after launch via `electron-updater` and GitHub Releases. When an update is found, an app-wide notification shows its download progress and links directly to Settings → Updates; once ready, it offers a user-controlled restart. Dismissal lasts only for the current app launch, and a completed download gets a fresh notification. To prevent match disruption, update restarts are locked out during active LAN or computer games, including multiplayer reconnection pauses. Differential transfers are supported when available. Delivery through the live GitHub update feed is supported starting from v1.2.0 installations.
+
+Local preferences and history currently use browser storage tied to the host address and port. If a port conflict causes the desktop server to choose a different port, earlier data can appear absent at the new address; it remains associated with the original address. Close extra copies before updating. Cross-port storage migration is not included in v1.2.4.
 
 ## Scripts
 
 | Script | What it does |
 | --- | --- |
 | `npm run dev` | Concurrent dev server + client with hot reload |
-| `npm test` | Vitest test suite (274 tests across 27 test files) |
+| `npm test` | Vitest test suite |
 | `npm run typecheck` | `tsc --noEmit` over the whole project |
 | `npm run build` | Typecheck, then client + server production build |
 | `npm run desktop:assets` | Stage bundled server and static client for Electron |

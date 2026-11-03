@@ -29,6 +29,8 @@ import { ConfirmDialog } from './components/ConfirmDialog.js';
 import { SettingsModal } from './components/settings/SettingsModal.js';
 import { UpdateBanner } from './components/UpdateBanner.js';
 import { isMultiplayerGameActive, setDesktopGameActive } from './services/desktop-updater.js';
+import { computeReplayState } from './services/live-game-replay.js';
+import { BoardReplayControls } from './components/BoardReplayControls.js';
 import { GameReview } from './components/review/GameReview.js';
 import { HistoryView } from './components/review/HistoryView.js';
 import { PracticeBoard } from './components/training/PracticeBoard.js';
@@ -115,6 +117,17 @@ export function App() {
   const [computerConfig, setComputerConfig] = useState<ComputerGameConfig | null>(null);
   const [isComputerGameActive, setIsComputerGameActive] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<'appearance' | 'updates'>('appearance');
+  const [dismissedUpdateKey, setDismissedUpdateKey] = useState<string | null>(null);
+
+  const openUpdateSettings = () => {
+    setSettingsInitialTab('updates');
+    setIsSettingsOpen(true);
+  };
+  const closeSettings = () => {
+    setIsSettingsOpen(false);
+    setSettingsInitialTab('appearance');
+  };
 
   // Preferences & Customization state
   const [preferences, setPreferences] = useState<UserPreferences>(() => loadUserPreferences());
@@ -123,6 +136,7 @@ export function App() {
 
   // Multiplayer Game state
   const [gameState, setGameState] = useState<GameState | null>(null);
+  const [replayPly, setReplayPly] = useState<number | null>(null);
   const [color, setColor] = useState<PlayerColor | null>(null);
   const [role, setRole] = useState<'player' | 'spectator'>('player');
   const [roomCodeInput, setRoomCodeInput] = useState(() => invitedRoomCode ?? '');
@@ -184,6 +198,23 @@ export function App() {
   }, [preferences.sound]);
 
   const chess = useMemo(() => new Chess(gameState?.fen), [gameState?.fen]);
+  const moveCount = gameState?.moves.length ?? 0;
+  const replayState = useMemo(
+    () => computeReplayState(gameState?.moves ?? [], chess, replayPly),
+    [gameState?.moves, chess, replayPly]
+  );
+  const {
+    viewedPly,
+    isViewingHistory,
+    displayedChess,
+    displayedLastMove,
+    viewedMoveLabel,
+  } = replayState;
+
+  // A takeback or game reset may remove or reach the position currently being viewed.
+  useEffect(() => {
+    if (replayPly !== null && replayPly >= moveCount) setReplayPly(null);
+  }, [replayPly, moveCount]);
 
   // Active theme calculation
   const activeTheme = useMemo(
@@ -207,6 +238,14 @@ export function App() {
   const isMultiplayerActive = isMultiplayerGameActive(gameState);
   const isComputerActive = currentView === 'computer' && isComputerGameActive;
   const isGameActive = isMultiplayerActive || isComputerActive;
+  const updateNotice = (
+    <UpdateBanner
+      isGameActive={isGameActive}
+      onOpenSettings={openUpdateSettings}
+      dismissedKey={dismissedUpdateKey}
+      onDismiss={setDismissedUpdateKey}
+    />
+  );
 
   useEffect(() => {
     setDesktopGameActive(isGameActive);
@@ -217,6 +256,7 @@ export function App() {
     role === 'player' &&
     color &&
     gameState.status === 'active' &&
+    !isViewingHistory &&
     gameState.turn === color
   );
 
@@ -228,6 +268,7 @@ export function App() {
     role === 'player' &&
     color &&
     gameState.status === 'active' &&
+    !isViewingHistory &&
     !pendingPromotion &&
     gameState.turn !== color
   );
@@ -374,6 +415,7 @@ export function App() {
       prevMovesCountRef.current = -1;
       prevStatusRef.current = 'waiting';
       setPremove(null);
+      setReplayPly(null);
     };
 
     const onRoomJoined = (payload: { roomCode: string; playerColor: PlayerColor | null; sessionId: string; role: 'player' | 'spectator'; hostUrl?: string | null }) => {
@@ -392,6 +434,7 @@ export function App() {
       prevMovesCountRef.current = -1;
       prevStatusRef.current = 'waiting';
       setPremove(null);
+      setReplayPly(null);
     };
 
     const onGameState = (state: GameState) => {
@@ -423,6 +466,10 @@ export function App() {
         if (tempChess.isCheck() && soundPrefs.check) {
           playCheckSound();
         }
+      }
+
+      if (currentMovesCount === 0 && replayPly !== null) {
+        setReplayPly(null);
       }
 
       if (state.status === 'finished' && prevStatusRef.current !== 'finished') {
@@ -536,8 +583,25 @@ export function App() {
     setPendingPromotion(null);
   }, [canMove, socket]);
 
+  const handlePreviousReplay = () => {
+    setSelectedSquare(null);
+    setPendingPromotion(null);
+    setPremove(null);
+    setReplayPly(Math.max(0, viewedPly - 1));
+  };
+
+  const handleNextReplay = () => {
+    if (!isViewingHistory) return;
+    const nextPly = viewedPly + 1;
+    setReplayPly(nextPly >= moveCount ? null : nextPly);
+  };
+
+  const handleLiveReplay = () => {
+    setReplayPly(null);
+  };
+
   const handleSquareClick = useCallback((square: Square) => {
-    if (!gameState || gameState.status !== 'active' || pendingPromotion) return;
+    if (!gameState || gameState.status !== 'active' || pendingPromotion || isViewingHistory) return;
 
     if (!canMove) {
       // Premoving: queue a move for our next turn.
@@ -588,35 +652,36 @@ export function App() {
     } else {
       setSelectedSquare(null);
     }
-  }, [gameState, canMove, canPremove, pendingPromotion, chess, legalTargets, selectedSquare, color, executeMove, premove]);
+  }, [gameState, canMove, canPremove, pendingPromotion, chess, legalTargets, selectedSquare, color, executeMove, premove, isViewingHistory]);
 
   const handlePieceDrop = useCallback((from: Square, to: Square) => {
-    if (!gameState || gameState.status !== 'active' || pendingPromotion) return;
+    if (!gameState || gameState.status !== 'active' || pendingPromotion || isViewingHistory) return false;
 
     if (!canMove) {
       // Premoving via drag: only our own pieces, dropping onto another square.
-      if (!canPremove || !color || from === to) return;
+      if (!canPremove || !color || from === to) return false;
       const dragged = chess.get(from);
-      if (!dragged || dragged.color !== color) return;
+      if (!dragged || dragged.color !== color) return false;
       if (premove && premove.from === from && premove.to === to) {
         setPremove(null); // dropping the same premove again cancels it
       } else {
         setPremove({ from, to });
         setSelectedSquare(null);
       }
-      return;
+      return true;
     }
 
     const moves = chess.moves({ square: from, verbose: true });
     const targetMove = moves.find((m) => m.to === to);
-    if (!targetMove) return;
+    if (!targetMove) return false;
 
     if (targetMove.promotion) {
       setPendingPromotion({ from, to });
     } else {
       executeMove(from, to);
     }
-  }, [gameState, canMove, canPremove, pendingPromotion, chess, color, premove]);
+    return true;
+  }, [gameState, canMove, canPremove, pendingPromotion, chess, color, premove, isViewingHistory, executeMove]);
 
   // Lobby actions
   const handleTimeControlChange = (tc: TimeControl) => {
@@ -683,7 +748,6 @@ export function App() {
   const handleCancelDraw = () => {
     socket.emit(SOCKET_EVENTS.CANCEL_DRAW);
   };
-
   const handleRespondDraw = (accept: boolean) => {
     socket.emit(SOCKET_EVENTS.RESPOND_DRAW, { accept });
   };
@@ -719,6 +783,7 @@ export function App() {
     setError(null);
     setCurrentView('play');
     setPremove(null);
+    setReplayPly(null);
     prevMovesCountRef.current = 0;
     prevStatusRef.current = 'waiting';
   };
@@ -882,11 +947,6 @@ export function App() {
           />
 
           <div className="px-4">
-            <UpdateBanner
-              isGameActive={isGameActive}
-              onOpenSettings={() => setIsSettingsOpen(true)}
-            />
-
             <Lobby
               initialMode={invitedRoomCode ? 'join' : undefined}
               playerName={preferences.playerName}
@@ -918,9 +978,11 @@ export function App() {
     return (
       <>
         {subviewContent}
+        {updateNotice}
         <SettingsModal
           isOpen={isSettingsOpen}
-          onClose={() => setIsSettingsOpen(false)}
+          onClose={closeSettings}
+          initialTab={settingsInitialTab}
           preferences={preferences}
           customThemes={customThemes}
           onUpdatePreferences={handleUpdatePreferences}
@@ -944,7 +1006,6 @@ export function App() {
   const opponentName = opponentColor === 'w' ? gameState.whiteName : (gameState.blackName ?? 'Waiting for opponent...');
   const myName = color === 'w' ? gameState.whiteName : (gameState.blackName ?? preferences.playerName);
 
-  const lastMove = gameState.moves.at(-1) ?? null;
   const currentMoveNumber = Math.floor(gameState.moves.length / 2) + 1;
 
   const opponentDisconnected = gameState.message.toLowerCase().includes('disconnected') || gameState.message.toLowerCase().includes('reconnection');
@@ -952,6 +1013,7 @@ export function App() {
 
   return (
     <div className="mx-auto min-h-screen max-w-6xl px-3 py-2 sm:px-6 sm:py-3.5">
+      {updateNotice}
       {/* Top Header Bar */}
       <header className="mb-2 sm:mb-3 flex flex-wrap items-center justify-between gap-2.5 border-b border-slate-800 pb-2 sm:pb-2.5">
         <div>
@@ -1196,7 +1258,7 @@ export function App() {
               />
               <span className="text-slate-200">{gameState.message}</span>
             </div>
-            <span className="font-mono text-slate-400">Move {currentMoveNumber}</span>
+            <span className="font-mono text-slate-400">{isViewingHistory ? `Move ${currentMoveNumber} (Live)` : `Move ${currentMoveNumber}`}</span>
           </div>
 
           {/* Board Controls Toolbar */}
@@ -1233,13 +1295,13 @@ export function App() {
             showDragHandle={true}
           >
             <Chessboard
-              chess={chess}
+              chess={displayedChess}
               flipped={flipped}
-              selectedSquare={selectedSquare}
-              legalTargets={legalTargets}
-              lastMove={lastMove}
-              isInteractive={canMove || canPremove}
-              premove={premove}
+              selectedSquare={isViewingHistory ? null : selectedSquare}
+              legalTargets={isViewingHistory ? new Map() : legalTargets}
+              lastMove={displayedLastMove}
+              isInteractive={!isViewingHistory && (canMove || canPremove)}
+              premove={isViewingHistory ? null : premove}
               theme={activeTheme}
               pieceSet={preferences.pieceSet}
               highlightStyle={preferences.highlightStyle}
@@ -1248,6 +1310,17 @@ export function App() {
               onPieceDrop={handlePieceDrop}
             />
           </ResponsiveBoardFrame>
+
+          <BoardReplayControls
+            viewedPly={viewedPly}
+            moveCount={moveCount}
+            isViewingHistory={isViewingHistory}
+            viewedMoveLabel={viewedMoveLabel}
+            onPrevious={handlePreviousReplay}
+            onNext={handleNextReplay}
+            onLive={handleLiveReplay}
+            maxWidth={measuredBoard.currentSize}
+          />
 
           {/* Bottom Player Card */}
           <div
@@ -1426,7 +1499,8 @@ export function App() {
       {/* Settings Modal */}
       <SettingsModal
         isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
+        onClose={closeSettings}
+        initialTab={settingsInitialTab}
         preferences={preferences}
         customThemes={customThemes}
         onUpdatePreferences={handleUpdatePreferences}

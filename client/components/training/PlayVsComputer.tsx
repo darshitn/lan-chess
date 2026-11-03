@@ -11,6 +11,8 @@ import type { GameResult, PlayerColor, PromotionPiece } from '../../../shared/ty
 import { Chessboard } from '../Chessboard.js';
 import { ResponsiveBoardFrame } from '../ResponsiveBoardFrame.js';
 import { BoardControls } from '../BoardControls.js';
+import { BoardReplayControls } from '../BoardReplayControls.js';
+import { computeReplayState } from '../../services/live-game-replay.js';
 import { useBoardDisplay } from '../../services/board-display.js';
 import { PlayerCard } from '../PlayerCard.js';
 import { MoveHistory } from '../MoveHistory.js';
@@ -65,6 +67,7 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
 }) => {
   const [controller, setController] = useState<ComputerGameController | null>(null);
   const [gameState, setGameState] = useState<ComputerGameState | null>(null);
+  const [replayPly, setReplayPly] = useState<number | null>(null);
   const [flipped, setFlipped] = useState(initialConfig.colorChoice === 'b');
   const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
   const [premove, setPremove] = useState<{ from: Square; to: Square } | null>(null);
@@ -96,6 +99,7 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
 
     const unsubState = ctrl.subscribeState((state) => {
       setGameState({ ...state });
+      if (state.moves.length === 0) setReplayPly(null);
       onGameActiveChange?.(state.status === 'active');
     });
 
@@ -129,15 +133,27 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
     }
   }, [gameState?.fen]);
 
+  const moveCount = gameState?.moves.length ?? 0;
+  const { viewedPly, isViewingHistory, displayedChess, displayedLastMove, viewedMoveLabel } = useMemo(
+    () => computeReplayState(gameState?.moves ?? [], chess, replayPly),
+    [gameState?.moves, chess, replayPly]
+  );
+  const viewPreviousMove = () => {
+    setSelectedSquare(null);
+    setPremove(null);
+    setPendingPromotion(null);
+    setReplayPly(Math.max(0, viewedPly - 1));
+  };
+
   // Attempt premove execution when turn flips to human
   useEffect(() => {
-    if (!controller || !gameState || gameState.status !== 'active') return;
+    if (!controller || !gameState || gameState.status !== 'active' || isViewingHistory) return;
     if (gameState.turn === gameState.humanColor && premove) {
       const pm = premove;
       setPremove(null);
       void controller.makeHumanMove(pm.from, pm.to);
     }
-  }, [controller, gameState?.turn, gameState?.status, gameState?.humanColor, premove]);
+  }, [controller, gameState?.turn, gameState?.status, gameState?.humanColor, premove, isViewingHistory]);
 
   // Active opening detection
   const activeOpening = useMemo(() => {
@@ -160,6 +176,7 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
   const canMove = Boolean(
     gameState &&
       gameState.status === 'active' &&
+      !isViewingHistory &&
       gameState.turn === gameState.humanColor &&
       !gameState.isEngineThinking
   );
@@ -167,6 +184,7 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
   const canPremove = Boolean(
     gameState &&
       gameState.status === 'active' &&
+      !isViewingHistory &&
       gameState.turn !== gameState.humanColor
   );
 
@@ -277,12 +295,16 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
         action: () => {
           setSelectedSquare(null);
           setPremove(null);
+          setPendingPromotion(null);
+          setReplayPly(null);
           void controller.startNewGame();
         },
       });
     } else {
       setSelectedSquare(null);
       setPremove(null);
+      setPendingPromotion(null);
+      setReplayPly(null);
       void controller.startNewGame();
     }
   };
@@ -330,7 +352,6 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
   const topAdvantage = topColor === 'w' ? whiteAdvantage : blackAdvantage;
   const bottomAdvantage = bottomColor === 'w' ? whiteAdvantage : blackAdvantage;
 
-  const lastMove = gameState.moves.at(-1) ?? null;
   const moveNumber = Math.floor(gameState.moves.length / 2) + 1;
 
   return (
@@ -516,11 +537,11 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
             showDragHandle={true}
           >
             <Chessboard
-              chess={chess}
+              chess={displayedChess}
               flipped={flipped}
               selectedSquare={selectedSquare}
               legalTargets={legalTargets}
-              lastMove={lastMove}
+              lastMove={displayedLastMove}
               isInteractive={canMove || canPremove}
               premove={premove}
               theme={theme}
@@ -531,6 +552,16 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
               onPieceDrop={handlePieceDrop}
             />
           </ResponsiveBoardFrame>
+          <BoardReplayControls
+            viewedPly={viewedPly}
+            moveCount={moveCount}
+            isViewingHistory={isViewingHistory}
+            viewedMoveLabel={viewedMoveLabel}
+            onPrevious={viewPreviousMove}
+            onNext={() => setReplayPly(viewedPly + 1 >= moveCount ? null : viewedPly + 1)}
+            onLive={() => setReplayPly(null)}
+            maxWidth={measuredBoard.currentSize}
+          />
 
           {/* Bottom Player Card */}
           <div

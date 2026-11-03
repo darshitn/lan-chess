@@ -2,6 +2,13 @@
 
 All notable changes to LAN Chess are documented here.
 
+## [1.2.4] — 2026-11-03
+
+- Added Previous, Next, and Live buttons below the board in LAN and computer games. Earlier positions are read-only; live moves and clocks continue while browsing. Returning Live restores the latest position.
+- Added an app-wide desktop update notification with download status, a direct link to Settings → Updates, and a restart action protected during active games.
+- Added regression tests for player, spectator, and computer replay, special moves, update notification dismissal, and direct Updates navigation.
+- Updated locked Electron runtime to 44.10.1, Vite to 8.3.5, and compatible server dependency patches. Production dependency audit is clean; development tooling still has reported advisories and is not claimed vulnerability-free.
+
 ## [1.2.3] — 2026-10-11
 
 ### Fixed — Post-game LAN review

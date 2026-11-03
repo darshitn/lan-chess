@@ -11,29 +11,34 @@ import {
 interface UpdateBannerProps {
   isGameActive: boolean;
   onOpenSettings?: () => void;
+  dismissedKey: string | null;
+  onDismiss: (key: string) => void;
 }
 
-export const UpdateBanner: React.FC<UpdateBannerProps> = ({ isGameActive, onOpenSettings }) => {
+export const UpdateBanner: React.FC<UpdateBannerProps> = ({ isGameActive, onOpenSettings, dismissedKey, onDismiss }) => {
   const [status, setStatus] = useState<UpdateStatusPayload | null>(null);
-  const [dismissed, setDismissed] = useState(false);
   const [installError, setInstallError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isDesktopApp()) return;
 
-    void getDesktopUpdateStatus().then(setStatus);
+    let receivedLiveStatus = false;
+    let mounted = true;
     const unsubscribe = subscribeToUpdateStatus((newStatus) => {
+      receivedLiveStatus = true;
       setStatus(newStatus);
-      // If a new update is downloaded, re-show banner even if previously dismissed
-      if (newStatus.status === 'downloaded') {
-        setDismissed(false);
-      }
+    });
+    void getDesktopUpdateStatus().then((currentStatus) => {
+      if (mounted && !receivedLiveStatus) setStatus(currentStatus);
     });
 
-    return unsubscribe;
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
   }, []);
 
-  if (!status || dismissed) return null;
+  if (!status) return null;
 
   // Only show banner for interesting states: available, downloading, downloaded
   if (
@@ -43,6 +48,12 @@ export const UpdateBanner: React.FC<UpdateBannerProps> = ({ isGameActive, onOpen
   ) {
     return null;
   }
+
+  // A dismissal lasts for this app launch. A completed download is a new,
+  // actionable phase, so it gets one fresh notification even if the earlier
+  // downloading notice was dismissed.
+  const notificationKey = `${status.info?.version ?? 'unknown'}:${status.status === 'downloaded' ? 'ready' : 'downloading'}`;
+  if (dismissedKey === notificationKey) return null;
 
   const handleRestart = async () => {
     if (isGameActive) {
@@ -60,16 +71,16 @@ export const UpdateBanner: React.FC<UpdateBannerProps> = ({ isGameActive, onOpen
     <div
       role="status"
       aria-live="polite"
-      className="mb-4 rounded-xl border border-sky-500/50 bg-sky-950/40 p-3 text-xs text-sky-200 shadow-lg backdrop-blur-sm"
+      className="fixed bottom-4 right-4 z-40 w-[calc(100vw-2rem)] max-w-sm rounded-xl border border-sky-500/60 bg-slate-950 p-4 text-sm text-sky-200 shadow-2xl"
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2.5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-2.5">
           <span className="flex h-2.5 w-2.5 relative">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75" />
             <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-sky-500" />
           </span>
 
-          <div>
+          <div className="min-w-0">
             {status.status === 'downloaded' && (
               <p className="font-bold text-white">
                 Update ready to install: <span className="text-sky-300">v{status.info?.version}</span>
@@ -88,42 +99,48 @@ export const UpdateBanner: React.FC<UpdateBannerProps> = ({ isGameActive, onOpen
               </p>
             )}
 
+            <p className="mt-1 text-xs text-slate-300">
+              {status.status === 'downloaded'
+                ? 'Restart when you are ready. Your current game will not be interrupted.'
+                : 'The update is downloading in the background. You can keep playing.'}
+            </p>
+
             {installError && <p className="mt-0.5 text-[11px] text-rose-300 font-medium">{installError}</p>}
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          {status.status === 'downloaded' && (
-            <button
-              type="button"
-              onClick={handleRestart}
-              disabled={isGameActive}
-              title={isGameActive ? 'Cannot restart during an active game' : 'Restart and install update'}
-              className="action-button action-primary px-3 py-1 text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isGameActive ? 'Game in Progress' : 'Restart to Update'}
-            </button>
-          )}
+        <button
+          type="button"
+          onClick={() => onDismiss(notificationKey)}
+          className="shrink-0 rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
+          aria-label="Dismiss update notification"
+        >
+          ✕
+        </button>
+      </div>
 
-          {onOpenSettings && (
-            <button
-              type="button"
-              onClick={onOpenSettings}
-              className="action-button action-secondary px-2.5 py-1 text-xs"
-            >
-              View in Settings
-            </button>
-          )}
-
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {status.status === 'downloaded' && (
           <button
             type="button"
-            onClick={() => setDismissed(true)}
-            className="rounded p-1 text-slate-400 hover:text-white hover:bg-slate-800"
-            aria-label="Dismiss update notification"
+            onClick={handleRestart}
+            disabled={isGameActive}
+            title={isGameActive ? 'Cannot restart during an active game' : 'Restart and install update'}
+            className="action-button action-primary px-3 py-1 text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            ✕
+            {isGameActive ? 'Game in Progress' : 'Restart to Update'}
           </button>
-        </div>
+        )}
+
+        {onOpenSettings && (
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            className="action-button action-secondary px-2.5 py-1 text-xs"
+          >
+            View update
+          </button>
+        )}
       </div>
     </div>
   );

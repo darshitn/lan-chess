@@ -30,6 +30,7 @@ import {
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialTab?: 'appearance' | 'updates';
   preferences: UserPreferences;
   customThemes: BoardTheme[];
   onUpdatePreferences: (newPrefs: UserPreferences) => void;
@@ -91,6 +92,7 @@ const AVATARS = ['♟', '♞', '♝', '♜', '♛', '♚', '⚡', '🛡️', '�
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onClose,
+  initialTab = 'appearance',
   preferences,
   customThemes,
   onUpdatePreferences,
@@ -98,12 +100,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onDeleteCustomTheme,
   isGameActive = false,
 }) => {
-  const [activeTab, setActiveTab] = useState<'appearance' | 'builder' | 'sound' | 'gameplay' | 'analysis' | 'updates'>('appearance');
+  const [activeTab, setActiveTab] = useState<'appearance' | 'builder' | 'sound' | 'gameplay' | 'analysis' | 'updates'>(initialTab);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatusPayload | null>(null);
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [appVersion, setAppVersion] = useState<string>('1.2.0');
   const modalRef = useModalBehavior(onClose, true, isOpen);
+
+  useEffect(() => {
+    if (isOpen) setActiveTab(initialTab);
+  }, [isOpen, initialTab]);
 
   useEffect(() => {
     if (!isOpen) return;

@@ -2,13 +2,13 @@
  * Real End-to-End In-App Updater Test in an Isolated Windows Environment.
  *
  * Verifies the complete upgrade lifecycle:
- * 1. Isolated installation of test build (v1.1.9) with disposable user data.
+ * 1. Separate installation of the previous release with disposable user data.
  * 2. Seeding of user preferences and game history in localStorage.
  * 3. Active-game lockout protection (refusal to install while match is active).
  * 4. Local test feed serving release/latest.yml, installer, and blockmap.
  * 5. Update detection: available -> downloading (with progress) -> downloaded.
  * 6. User-initiated restart & install execution into the isolated directory.
- * 7. Verification of newly installed version (v1.2.0) and retained user data.
+ * 7. Verification of package.json's target version and retained synthetic data.
  */
 
 import assert from 'node:assert';
@@ -18,8 +18,10 @@ import http from 'node:http';
 import path from 'node:path';
 
 const REPO_ROOT = process.cwd();
+const TARGET_VERSION = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8')).version;
+const BASE_VERSION = process.env.BASE_VERSION || '1.2.3';
 const ARTIFACTS_DIR = path.resolve(REPO_ROOT, 'artifacts');
-const TEST_ENV_DIR = path.join(ARTIFACTS_DIR, 'test-updater-e2e');
+const TEST_ENV_DIR = path.join(ARTIFACTS_DIR, `test-updater-e2e-${Date.now()}`);
 const INSTALL_DIR = path.join(TEST_ENV_DIR, 'install');
 const USER_DATA_DIR = path.join(TEST_ENV_DIR, 'userData');
 const FEED_DIR = path.join(TEST_ENV_DIR, 'feed');
@@ -129,6 +131,15 @@ async function connectCdp(debugPort) {
   throw new Error(`Failed to connect to CDP on port ${debugPort}`);
 }
 
+async function waitForDesktop(client) {
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const status = await client.evaluate('window.desktop?.getStatus()');
+    if (status?.version) return status;
+    await sleep(500);
+  }
+  throw new Error('Desktop preload bridge did not initialize');
+}
+
 async function main() {
   console.log('=== LAN Chess Real In-App Updater End-to-End Test ===');
   console.log(`Repository root: ${REPO_ROOT}`);
@@ -144,17 +155,20 @@ async function main() {
 
   // Copy release assets to feed directory
   const releaseDir = path.join(REPO_ROOT, 'release');
-  const releaseExe = path.join(releaseDir, 'LAN-Chess-Setup-1.2.0.exe');
-  const releaseBlockmap = path.join(releaseDir, 'LAN-Chess-Setup-1.2.0.exe.blockmap');
+  const releaseName = `LAN-Chess-Setup-${TARGET_VERSION}.exe`;
+  const releaseExe = path.join(releaseDir, releaseName);
+  const baseExe = path.join(releaseDir, `LAN-Chess-Setup-${BASE_VERSION}.exe`);
+  const releaseBlockmap = `${releaseExe}.blockmap`;
   const releaseYml = path.join(releaseDir, 'latest.yml');
 
   assert(fs.existsSync(releaseExe), `Release exe not found at: ${releaseExe}`);
   assert(fs.existsSync(releaseYml), `latest.yml not found at: ${releaseYml}`);
 
-  fs.copyFileSync(releaseExe, path.join(FEED_DIR, 'LAN-Chess-Setup-1.2.0.exe'));
+  assert(fs.existsSync(baseExe), `Base installer missing: ${baseExe}`);
+  fs.copyFileSync(releaseExe, path.join(FEED_DIR, releaseName));
   fs.copyFileSync(releaseYml, path.join(FEED_DIR, 'latest.yml'));
   if (fs.existsSync(releaseBlockmap)) {
-    fs.copyFileSync(releaseBlockmap, path.join(FEED_DIR, 'LAN-Chess-Setup-1.2.0.exe.blockmap'));
+    fs.copyFileSync(releaseBlockmap, path.join(FEED_DIR, `${releaseName}.blockmap`));
   }
 
   // 2. Start local HTTP feed server
@@ -162,13 +176,15 @@ async function main() {
   const feedServer = await startFeedServer(FEED_PORT, FEED_DIR);
   console.log(`Feed server listening on http://127.0.0.1:${FEED_PORT}`);
 
+  const launchedApps = [];
+  const clients = [];
   try {
-    // 3. Install base older build into INSTALL_DIR using PowerShell -Wait
+    // Install the actual previous release with a disposable profile.
     console.log(`Installing base application into ${INSTALL_DIR}...`);
     const psInstall = spawn('powershell.exe', [
       '-NoProfile',
       '-Command',
-      `Start-Process -FilePath '${releaseExe}' -ArgumentList '/S', '/D=${INSTALL_DIR}' -Wait`,
+      `Start-Process -WindowStyle Hidden -FilePath '${baseExe}' -ArgumentList '/S', '/D=${INSTALL_DIR}' -Wait`,
     ], { stdio: 'inherit' });
     await new Promise((resolve, reject) => {
       psInstall.on('exit', (code) => {
@@ -180,25 +196,7 @@ async function main() {
 
     assert(fs.existsSync(EXE_PATH), `Installed executable missing at ${EXE_PATH}`);
 
-    // Adjust version in app.asar to 1.1.9 using asar
-    console.log('Synthesizing older base version (1.1.9) in installed app.asar...');
-    const asarPath = path.join(INSTALL_DIR, 'resources', 'app.asar');
-    const extractDir = path.join(INSTALL_DIR, 'resources', 'app-temp-extract');
-
-    const extractProc = spawn('npx.cmd', ['--yes', 'asar', 'extract', asarPath, extractDir], { shell: true });
-    await new Promise((resolve) => extractProc.on('exit', resolve));
-
-    const pkgPath = path.join(extractDir, 'package.json');
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-    pkg.version = '1.1.9';
-    fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
-
-    const packProc = spawn('npx.cmd', ['--yes', 'asar', 'pack', extractDir, asarPath], { shell: true });
-    await new Promise((resolve) => packProc.on('exit', resolve));
-    fs.rmSync(extractDir, { recursive: true, force: true });
-
-    // 4. Launch older version (1.1.9) with isolated user data and local feed URL
-    console.log('Launching installed base app (v1.1.9) with isolated environment...');
+    console.log(`Launching installed base app (v${BASE_VERSION}) with disposable profile...`);
     const appProc = spawn(EXE_PATH, [
       '--remote-debugging-port=9228',
       '--no-sandbox',
@@ -214,23 +212,25 @@ async function main() {
       stdio: 'pipe',
     });
 
+    launchedApps.push(appProc);
     let client = await connectCdp(9228);
+    clients.push(client);
 
-    // Verify initial version is 1.1.9
-    const initialStatus = await client.evaluate('window.desktop?.getStatus()');
+    // Verify the actual previous release.
+    const initialStatus = await waitForDesktop(client);
     console.log('Initial app status:', initialStatus);
-    assert.strictEqual(initialStatus.version, '1.1.9', 'Expected initial version to be 1.1.9');
+    assert.strictEqual(initialStatus.version, BASE_VERSION);
 
     // 5. Seed preferences and game history in localStorage
     console.log('Seeding test user preferences and game history into localStorage...');
     await client.evaluate(`
-      localStorage.setItem('lan-chess-user-prefs', JSON.stringify({
-        boardTheme: 'cyber',
+      localStorage.setItem('lan-chess-user-preferences-v2', JSON.stringify({
+        activeThemeId: 'cyber',
         uiTheme: 'cyber',
         pieceSet: 'neon',
         sound: { master: true, move: true }
       }));
-      localStorage.setItem('lan-chess-game-history', JSON.stringify([
+      localStorage.setItem('lan-chess-game-history-v2', JSON.stringify([
         {
           id: 'test-game-retained-1',
           roomCode: 'E2E1',
@@ -238,14 +238,18 @@ async function main() {
           whiteName: 'AliceTester',
           blackName: 'BobTester',
           winner: 'w',
-          moves: ['e4', 'e5', 'Nf3']
+          reason: 'resignation',
+          timeControl: '3+2',
+          pgn: '1. e4 1-0',
+          fen: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
+          moves: [{ from: 'e2', to: 'e4', san: 'e4', color: 'w' }]
         }
       ]));
     `);
 
     // Verify data was written
-    const seededPrefs = await client.evaluate("JSON.parse(localStorage.getItem('lan-chess-user-prefs') || '{}')");
-    assert.strictEqual(seededPrefs.boardTheme, 'cyber', 'Failed to seed preferences');
+    const seededPrefs = await client.evaluate("JSON.parse(localStorage.getItem('lan-chess-user-preferences-v2') || '{}')");
+    assert.strictEqual(seededPrefs.activeThemeId, 'cyber', 'Failed to seed preferences');
     console.log('Seeded data verified in localStorage.');
 
     // 6. Test Active-Game Lockout Protection
@@ -291,7 +295,7 @@ async function main() {
     }
 
     assert(finalStatus && finalStatus.status === 'downloaded', 'Timed out waiting for update to download');
-    assert.strictEqual(finalStatus.info?.version, '1.2.0', 'Downloaded version must be 1.2.0');
+    assert.strictEqual(finalStatus.info?.version, TARGET_VERSION);
 
     // 9. Execute Restart & Install into isolated directory
     console.log('Calling quitAndInstall() to execute real silent upgrade into isolated directory...');
@@ -309,7 +313,7 @@ async function main() {
     });
 
     // Wait for the NSIS installer to finish applying changes to INSTALL_DIR
-    console.log('Waiting for NSIS installer to finish applying v1.2.0 files...');
+    console.log(`Waiting for NSIS installer to finish applying v${TARGET_VERSION} files...`);
     const startWait = Date.now();
     let nsisComplete = false;
     for (let wait = 0; wait < 60; wait++) {
@@ -350,48 +354,49 @@ async function main() {
       stdio: 'pipe',
     });
 
+    launchedApps.push(upgradedProc);
     const upgradedClient = await connectCdp(9229);
+    clients.push(upgradedClient);
 
-    const upgradedStatus = await upgradedClient.evaluate('window.desktop?.getStatus()');
+    const upgradedStatus = await waitForDesktop(upgradedClient);
     console.log('Upgraded app status:', upgradedStatus);
+    assert.strictEqual(upgradedStatus.port, initialStatus.port, 'Server origin changed; localStorage retention is origin-specific');
     assert.strictEqual(
       upgradedStatus.version,
-      '1.2.0',
-      `Expected version 1.2.0 after update, but found ${upgradedStatus.version}`
+      TARGET_VERSION,
+      `Expected version ${TARGET_VERSION} after update, but found ${upgradedStatus.version}`
     );
 
     // Check localStorage preservation
     console.log('Verifying preserved localStorage data after upgrade...');
-    const retainedPrefs = await upgradedClient.evaluate("JSON.parse(localStorage.getItem('lan-chess-user-prefs') || '{}')");
-    const retainedHistory = await upgradedClient.evaluate("JSON.parse(localStorage.getItem('lan-chess-game-history') || '[]')");
+    const retainedPrefs = await upgradedClient.evaluate("JSON.parse(localStorage.getItem('lan-chess-user-preferences-v2') || '{}')");
+    const retainedHistory = await upgradedClient.evaluate("JSON.parse(localStorage.getItem('lan-chess-game-history-v2') || '[]')");
 
     console.log('Retained preferences:', retainedPrefs);
     console.log('Retained game history count:', retainedHistory.length);
 
-    assert.strictEqual(retainedPrefs.boardTheme, 'cyber', 'Retained boardTheme mismatch');
+    assert.strictEqual(retainedPrefs.activeThemeId, 'cyber', 'Retained activeThemeId mismatch');
     assert.strictEqual(retainedPrefs.pieceSet, 'neon', 'Retained pieceSet mismatch');
     assert.strictEqual(retainedHistory.length, 1, 'Expected 1 retained game in history');
     assert.strictEqual(retainedHistory[0].id, 'test-game-retained-1', 'Retained game ID mismatch');
 
+    void upgradedClient.evaluate('window.close()').catch(() => {});
+    await sleep(1000);
     upgradedClient.close();
-    upgradedProc.kill();
+    if (upgradedProc.exitCode === null) upgradedProc.kill();
 
     console.log('\n======================================================');
     console.log(' SUCCESS: Real End-to-End In-App Update Verified!');
-    console.log(' - Upgraded from v1.1.9 -> v1.2.0');
-    console.log(' - SHA-512 blockmap verification performed');
+    console.log(` - Upgraded from v${BASE_VERSION} -> v${TARGET_VERSION}`);
+    console.log(' - Update download and installer checksum accepted by electron-updater');
     console.log(' - Active-game lockout protection verified');
     console.log(' - Local preferences & game history 100% preserved');
     console.log('======================================================\n');
 
-    // Clean up on success
-    try {
-      fs.rmSync(TEST_ENV_DIR, { recursive: true, force: true });
-      console.log('Cleaned up isolated test environment.');
-    } catch {
-      // Ignore
-    }
+    console.log(`Test evidence retained at ${TEST_ENV_DIR}`);
   } finally {
+    for (const client of clients) client.close();
+    for (const child of launchedApps) if (child.exitCode === null) child.kill();
     feedServer.close();
   }
 }
