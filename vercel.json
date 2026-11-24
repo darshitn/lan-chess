@@ -1,0 +1,6 @@
+{
+  "framework": null,
+  "installCommand": "",
+  "buildCommand": "node site/build.cjs",
+  "outputDirectory": "dist/marketing"
+}

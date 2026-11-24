@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LAN Chess — Chess across the table</title>
+  <meta name="description" content="Host a chess match on your Wi-Fi. Friends join in a browser. Play offline against Stockfish, solve tactics and review your games.">
+  <meta name="theme-color" content="#f6f2e9"><meta property="og:title" content="LAN Chess — Chess across the table">
+  <meta property="og:description" content="Two devices, one local chess match."><meta property="og:type" content="website">
+  <link rel="icon" href="assets/icon.png"><link rel="stylesheet" href="styles.css"><script defer src="script.js"></script>
+</head>
+<body id="top">
+<a class="skip" href="#main">Skip to content</a>
+<header class="mast wrap"><a class="brand" href="#top"><i class="mark" aria-hidden="true"></i>LAN Chess</a>
+<nav aria-label="Main navigation"><a href="#how-lan-works">How to play</a><a href="#features">Game modes</a><a href="#faq">FAQ</a></nav>
+<a class="pill dark" href="#download">Get the app <span aria-hidden="true">↗</span></a></header>
+<main id="main">
+<section class="hero wrap"><div class="intro">
+<p class="label"><i class="signal" aria-hidden="true"></i> Local multiplayer chess</p>
+<h1>Chess across<br><em>the table.</em></h1>
+<p class="lede">Turn your Wi-Fi into a chess club. Host a game on your computer and invite a friend to play from their browser.</p>
+<div class="actions"><a class="pill red" href="#download">Download LAN Chess <span aria-hidden="true">↓</span></a><button class="watch" id="watch"><b aria-hidden="true">▷</b> Watch demo</button></div>
+<small>Windows x64 <span> / </span> macOS preview</small></div>
+<figure class="portrait"><img src="assets/club-knight.jpg" fetchpriority="high" alt="A carved ivory knight flanked by a dark rook and pawn on a sunlit chessboard"></figure></section>
+<div class="contents wrap"><a href="#how-lan-works">Local multiplayer <span>↘</span></a><a href="#features" data-target-view="engine">Offline Stockfish <span>↘</span></a><a href="#offline-ai">1,320 tactical puzzles <span>↘</span></a></div>
+<section class="spread wrap" id="how-lan-works"><div><p class="label">Local multiplayer</p><h2>From Wi-Fi to<br><em>first move.</em></h2>
+<ol class="steps"><li><h3>Set the clock</h3><p>Pick a time control and create a room on your computer.</p></li><li><h3>Share the invite</h3><p>Send the room link or let your opponent scan the QR code on the same Wi-Fi.</p></li><li><h3>Take your seats</h3><p>Your guest joins in a browser. Only the host needs the app.</p></li></ol></div>
+<figure class="shot">
+  <div class="host-scenes">
+    <img class="room-scene" src="assets/waiting-room.png" loading="lazy" alt="The waiting room displays the board, room code and QR invite">
+    <img class="lobby-scene" src="assets/desktop-lobby.png" loading="lazy" alt="Lobby with time controls for a new room">
+    <img class="match-scene" src="assets/active-match.png" loading="lazy" alt="A match in progress with clocks and move history">
+  </div>
+  <figcaption>Hosting a match <span>App preview</span></figcaption>
+</figure></section>
+<section class="tour" id="features"><div class="wrap"><p class="label">Game modes</p><div class="tour-head"><h2>At the <em>board.</em></h2>
+<div class="choices" role="group" aria-label="Explore game modes"><button data-view="match" aria-pressed="true">Match play</button><button data-view="focus" aria-pressed="false">Focus mode</button><button data-view="engine" aria-pressed="false">Solo practice</button></div></div>
+<figure aria-live="polite"><img id="screen" src="assets/active-match.png" loading="lazy" alt="A LAN match with clocks and move history"><figcaption id="caption">Follow the clocks, queue a premove and replay the action while the match continues.</figcaption></figure></div></section>
+<section class="spread finishes wrap"><div><p class="label">Board workshop</p><h2>Same position.<br><em>Different feel.</em></h2><p class="lede">Drag across the board to compare Sea Glass and Walnut in the Italian Game.</p></div><figure class="finish-study">
+    <div class="finish-title"><strong>Finish comparison</strong><span>Italian Game &middot; 3.Bc4</span></div>
+    <div class="finish-board" style="--split:58%">
+      <img src="assets/finish-walnut.png" width="586" height="586" alt="Italian Game opening with Walnut pieces and board">
+      <img class="finish-overlay" src="assets/finish-glass.png" width="586" height="586" alt="The same position in Sea Glass">
+      <span class="finish-divider" aria-hidden="true"><i>&lsaquo;&nbsp;&rsaquo;</i></span>
+      <input id="finish-split" type="range" min="0" max="100" value="58" aria-label="Compare Sea Glass and Walnut finishes" aria-valuetext="58 percent Sea Glass" aria-describedby="finish-help">
+    </div>
+    <figcaption><strong>Sea Glass</strong><span id="finish-help">Slide to compare</span><strong>Walnut</strong></figcaption>
+  </figure></section>
+<section class="spread faq wrap" id="faq"><div><p class="label">Frequently asked questions</p><h2>Before <em>you play.</em></h2></div><div>
+<details open><summary>Do we need internet access?</summary><p>Download the app first. After that, the host and guests can play on the same local network even when the internet is down.</p></details>
+<details><summary>Does everyone need the app?</summary><p>Only the host installs LAN Chess. Guests open the room link on a phone, tablet or laptop.</p></details>
+<details id="offline-ai"><summary>What can I play on my own?</summary><p>Play against Stockfish, solve 1,320 rated tactics or review saved games move by move with engine analysis. All three work offline.</p></details>
+<details><summary>What if my friend can’t join?</summary><p>Connect both devices to the same network and allow LAN Chess to accept incoming connections. Some guest Wi-Fi networks isolate devices from one another.</p></details></div></section>
+<section id="download" class="finale"><div class="wrap"><div><p class="label">Download LAN Chess · v1.2.4</p><h2>Set the <em>board.</em></h2></div><div><div class="actions"><a class="pill light" href="https://github.com/darshitn/lan-chess/releases/download/v1.2.4/LAN-Chess-Setup-1.2.4.exe">Windows x64 <span>↓</span></a><a class="pill outline" href="https://github.com/darshitn/lan-chess/actions/runs/45443792966/artifacts/14946070653">macOS preview <span>↗</span></a></div><small>Mac preview requires GitHub sign-in. The app is ad-hoc signed.</small></div></div></section>
+</main><footer class="wrap"><a class="brand" href="#top"><i class="mark" aria-hidden="true"></i>LAN Chess</a><a href="https://github.com/darshitn/lan-chess">GitHub ↗</a><a href="https://github.com/darshitn/lan-chess/releases">Release notes ↗</a></footer>
+<dialog id="demo" aria-labelledby="demo-title"><div class="modal-head"><h2 id="demo-title">Sea Glass in play</h2><button id="close" aria-label="Close demo">×</button></div><video controls playsinline preload="none" src="assets/demo.mp4" poster="assets/active-match.png"></video></dialog>
+</body></html>
