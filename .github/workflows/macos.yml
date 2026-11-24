@@ -24,8 +24,9 @@ jobs:
         run: |
           app="release/mac-universal/LAN Chess.app"
           executable="$app/Contents/MacOS/LAN Chess"
-          lipo -verify_arch arm64 x86_64 "$executable"
+          lipo "$executable" -verify_arch arm64 x86_64
           codesign --verify --deep --strict "$app"
+          hdiutil verify release/*-mac-universal.dmg
           "$executable" > "$RUNNER_TEMP/lan-chess.log" 2>&1 &
           app_pid=$!
           trap 'kill "$app_pid" 2>/dev/null || true; cat "$RUNNER_TEMP/lan-chess.log"' EXIT
