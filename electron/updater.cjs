@@ -77,7 +77,8 @@ class DesktopUpdater {
     this.status = createInitialStatus();
     this.options = options;
     this.mockUpdater = options.mockUpdater || null;
-    this.updater = this.mockUpdater || getAutoUpdater();
+    this.isMacPreview = process.platform === 'darwin' && require('../package.json').macPreview === true;
+    this.updater = this.isMacPreview ? null : (this.mockUpdater || getAutoUpdater());
     this.isDev = options.isDev !== undefined ? options.isDev : (!app.isPackaged || process.env.LANCHESS_DEV === '1');
     this.logger = options.logger || console;
     this.initialized = false;
@@ -121,7 +122,9 @@ class DesktopUpdater {
 
     if (!this.updater) {
       this.status.status = 'error';
-      this.status.error = 'Auto-updater library is not available.';
+      this.status.error = this.isMacPreview
+        ? 'Install a newer Mac build manually to update this preview.'
+        : 'Auto-updater library is not available.';
       this.broadcastStatus();
       return { success: false, status: 'error', error: this.status.error };
     }

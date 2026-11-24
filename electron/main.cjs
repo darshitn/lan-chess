@@ -26,6 +26,8 @@ const SERVER_READY_TIMEOUT_MS = 15000;
 
 let serverProcess = null;
 let serverPort = null;
+let serverReady = false;
+let startingServer = false;
 let mainWindow = null;
 let desktopUpdater = null;
 let quitting = false;
@@ -61,6 +63,7 @@ function assetPaths() {
 }
 
 function getAppIcon() {
+  if (process.platform === 'darwin') return undefined;
   const candidates = [
     path.join(__dirname, '..', 'build', 'icon.ico'),
     path.join(process.resourcesPath, 'icon.ico'),
@@ -112,8 +115,10 @@ function startServer(port) {
   child.stdout?.on('data', (d) => log(`server: ${String(d).trim()}`));
   child.stderr?.on('data', (d) => log(`server(error): ${String(d).trim()}`));
 
+  child.on('error', (error) => log('server could not start:', error));
   child.on('exit', (code) => {
     serverProcess = null;
+    serverReady = false;
     log(`server exited (code=${code})`);
     if (!quitting && mainWindow && !mainWindow.isDestroyed()) {
       dialog
@@ -128,7 +133,7 @@ function startServer(port) {
         })
         .then(async ({ response }) => {
           if (response === 0) {
-            await restartServer();
+            await launchServerAndWindow();
           } else {
             app.quit();
           }
@@ -140,13 +145,20 @@ function startServer(port) {
   return child;
 }
 
-async function restartServer() {
-  const { port, preferred } = await pickPort(PREFERRED_PORT);
-  serverPort = port;
-  serverProcess = startServer(port);
-
+async function launchServerAndWindow() {
+  if (startingServer || quitting) return;
+  startingServer = true;
+  let port = PREFERRED_PORT;
+  let preferred = true;
   try {
+    ({ port, preferred } = await pickPort(PREFERRED_PORT));
+    if (quitting) return;
+    serverPort = port;
+    serverProcess = startServer(port);
     await waitForServerReady(port, SERVER_READY_TIMEOUT_MS);
+    if (quitting) return;
+    if (!serverProcess) throw new Error('The bundled server exited during startup.');
+    serverReady = true;
     const target = connectTarget ?? `http://127.0.0.1:${serverPort}`;
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.loadURL(target);
@@ -154,7 +166,9 @@ async function restartServer() {
       createWindow();
     }
   } catch {
-    showServerFailedDialog(port, preferred);
+    if (!quitting) showServerFailedDialog(port, preferred);
+  } finally {
+    startingServer = false;
   }
 }
 
@@ -175,22 +189,6 @@ function showServerFailedDialog(port, preferred) {
     noLink: true,
   });
   app.quit();
-}
-
-async function launchServerAndWindow() {
-  const { port, preferred } = await pickPort(PREFERRED_PORT);
-  serverPort = port;
-
-  serverProcess = startServer(port);
-
-  try {
-    await waitForServerReady(port, SERVER_READY_TIMEOUT_MS);
-  } catch {
-    showServerFailedDialog(port, preferred);
-    return;
-  }
-
-  createWindow();
 }
 
 // ---------- window ----------
@@ -274,11 +272,16 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
-    desktopUpdater = null;
+    desktopUpdater.mainWindow = null;
+    desktopUpdater.setGameActive(false);
   });
 
-  desktopUpdater = new DesktopUpdater(mainWindow, { isDev, logger: { log, error: console.error } });
-  desktopUpdater.init();
+  if (desktopUpdater) {
+    desktopUpdater.mainWindow = mainWindow;
+  } else {
+    desktopUpdater = new DesktopUpdater(mainWindow, { isDev, logger: { log, error: console.error } });
+    desktopUpdater.init();
+  }
 
   mainWindow.loadURL(target);
 }
@@ -314,9 +317,22 @@ if (!app.requestSingleInstanceLock()) {
     }
   });
 
-  if (!isDev) Menu.setApplicationMenu(null);
-
   app.whenReady().then(() => {
+    if (process.platform === 'darwin') {
+      Menu.setApplicationMenu(Menu.buildFromTemplate([
+        { role: 'appMenu' },
+        { role: 'fileMenu' },
+        { role: 'editMenu' },
+        { role: 'windowMenu' },
+      ]));
+      app.on('activate', () => {
+        if (mainWindow || quitting) return;
+        if (serverReady) createWindow();
+        else launchServerAndWindow();
+      });
+    } else if (!isDev) {
+      Menu.setApplicationMenu(null);
+    }
     log(`starting (dev=${isDev}, version=${app.getVersion()})`);
     launchServerAndWindow();
   });
@@ -334,16 +350,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.on('window-all-closed', () => {
-    quitting = true;
-    if (serverProcess) {
-      try {
-        serverProcess.kill();
-      } catch {
-        // process may already be gone
-      }
-      serverProcess = null;
-    }
-    app.quit();
+    if (process.platform !== 'darwin') app.quit();
   });
 }
 

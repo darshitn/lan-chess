@@ -1,0 +1,47 @@
+name: macOS desktop
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mac:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run electron:build:mac:preview
+      - name: Verify the universal app and start its bundled server
+        run: |
+          app="release/mac-universal/LAN Chess.app"
+          executable="$app/Contents/MacOS/LAN Chess"
+          lipo -verify_arch arm64 x86_64 "$executable"
+          codesign --verify --deep --strict "$app"
+          "$executable" > "$RUNNER_TEMP/lan-chess.log" 2>&1 &
+          app_pid=$!
+          trap 'kill "$app_pid" 2>/dev/null || true; cat "$RUNNER_TEMP/lan-chess.log"' EXIT
+          for attempt in {1..30}; do
+            if curl -fsS --max-time 2 http://127.0.0.1:3001/api/status; then
+              curl -fsS --max-time 5 http://127.0.0.1:3001/ | grep '<title>LAN Chess'
+              curl -fsS --max-time 5 http://127.0.0.1:3001/stockfish.wasm -o /dev/null
+              exit 0
+            fi
+            kill -0 "$app_pid"
+            sleep 1
+          done
+          exit 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LAN-Chess-mac-universal-preview
+          path: release/*-mac-universal.dmg
+          if-no-files-found: error

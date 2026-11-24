@@ -2,6 +2,10 @@
 
 All notable changes to LAN Chess are documented here.
 
+## [Unreleased]
+
+- Added universal macOS builds for Apple Silicon and Intel, with a native menu bar and Dock reopening.
+
 ## [1.2.4] — 2026-11-03
 
 - Added Previous, Next, and Live buttons below the board in LAN and computer games. Earlier positions are read-only; live moves and clocks continue while browsing. Returning Live restores the latest position.

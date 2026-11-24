@@ -1,6 +1,6 @@
-# LAN Chess — Windows Desktop Application
+# LAN Chess Desktop Application
 
-LAN Chess ships as a native Windows desktop application. The desktop shell is
+LAN Chess uses one Electron desktop application for Windows and macOS. The desktop shell is
 **Electron doing exactly two jobs**: showing the app in a real window and
 running/monitoring the bundled Node server. All game behavior is unchanged:
 
@@ -19,6 +19,18 @@ rules, rooms, or clocks.
 New in **v1.1.0**: **Play vs Computer** (offline Stockfish) and **draw-offer cancellation** are part of the bundled frontend; they require no additional Electron changes.
 
 ## Install
+
+### macOS
+
+1. Open the universal `LAN-Chess-<version>-mac-universal.dmg` on an Apple Silicon or Intel Mac.
+2. Drag **LAN Chess** into **Applications** and launch it from there. The bundled server starts automatically.
+3. Closing the window keeps the server running. Click the Dock icon to reopen the window. Use **LAN Chess → Quit LAN Chess** or **⌘Q** to stop hosting.
+
+The **macOS desktop** GitHub Actions workflow uploads a preview DMG as
+`LAN-Chess-mac-universal-preview`. Preview builds use an ad-hoc signature,
+may be blocked by Gatekeeper, and require manual updates.
+
+### Windows
 
 1. Download `LAN-Chess-Setup-<version>.exe` from GitHub Releases.
 2. Run it — no Node.js, npm, Git, or admin rights required (per-user install).
@@ -42,10 +54,16 @@ the app with `LAN Chess.exe --connect=<host-ip>:<port>` to open the UI
 directly onto the host's table (advanced usage; the browser path is the
 normal one).
 
+On macOS, run `open -a "LAN Chess" --args --connect=<host-ip>:<port>`
+with LAN Chess fully quit. Substitute the host address and port without angle brackets.
+
 ## Firewall & networks
 
 - The first time the app hosts, Windows Firewall may ask for permission —
   **allow on Private networks** so other devices can reach the server.
+- On macOS, allow LAN Chess to accept incoming connections if the firewall prompts.
+  If macOS prompts for Local Network access when connecting to a host, you can
+  manage it in **System Settings → Privacy & Security → Local Network**.
 - The app never modifies firewall or security settings.
 - On college/public Wi-Fi, device-to-device traffic is often blocked by the
   network itself (client isolation). The app cannot bypass this; the host
@@ -69,7 +87,7 @@ normal one).
   actual port.
 - If the server process dies, the window shows
   *"The local server stopped unexpectedly"* with **Restart Server / Quit**.
-- Closing the window stops the server child — no orphan processes.
+- Quitting the desktop app stops the server child.
 - Renderer security: `contextIsolation: true`, `nodeIntegration: false`,
   `sandbox: true`, permission requests denied, navigation locked to the local
   server, external links open in the system browser. The only IPC is a
@@ -82,17 +100,37 @@ npm run dev              # web development (browser, hot reload) — unchanged
 npm run build            # web production build (typecheck + client + server)
 npm run electron:dev     # build everything, then open the desktop window
 npm run electron:build   # build everything, then produce the NSIS installer
+npm run electron:build:mac:preview  # universal preview DMG on macOS
+npm run electron:build:mac          # signed universal DMG and update ZIP on macOS
 npm run build:puzzles    # regenerate the puzzle library (see scripts/)
 ```
 
 - Desktop build output: `desktop/server/server.cjs` + `desktop/server/client/`
 - Installer output: `release/LAN-Chess-Setup-<version>.exe`
+- Mac preview output: `release/LAN-Chess-<version>-mac-universal.dmg`
+
+### Publishing a Mac release
+
+On a Mac with Node.js 24 and Xcode command-line tools, run `npm ci` from a
+clean checkout. Install a **Developer ID Application** certificate in your
+keychain or provide it via `CSC_LINK` and `CSC_KEY_PASSWORD`. Configure
+notarization using `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and
+`APPLE_TEAM_ID`, then run `npm run electron:build:mac`.
+
+Before uploading, check the app signature with `codesign --verify --deep --strict`
+and validate notarization with `xcrun stapler validate` on
+`release/mac-universal/LAN Chess.app`. Smoke-test the DMG installation, LAN
+hosting from a second device, offline Stockfish, and app quit on a Mac.
+Attach the DMG, ZIP, generated Mac update manifest (`latest-mac.yml`), and
+generated Mac blockmaps to the matching GitHub release. Include the Windows
+update assets when publishing a new shared version so both update feeds work.
 
 ## User data
 
 Preferences, themes, game history, and statistics live in the app's browser
-storage (Chromium profile inside `%APPDATA%/lan-chess`), never in the install
-directory — uninstalling or updating the app preserves your data.
+storage in the Chromium profile at
+`~/Library/Application Support/lan-chess` on macOS and
+`%APPDATA%/lan-chess` on Windows. Updating the app preserves this profile.
 
 ## Known limitations
 

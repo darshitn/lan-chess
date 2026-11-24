@@ -18,7 +18,9 @@
     "start": "node dist/server/server/index.js",
     "desktop:assets": "node scripts/build-desktop.mjs",
     "electron:dev": "npm run build && node scripts/build-desktop.mjs && electron .",
-    "electron:build": "npm run build && node scripts/build-desktop.mjs && electron-builder --win"
+    "electron:build": "npm run build && node scripts/build-desktop.mjs && electron-builder --win",
+    "electron:build:mac": "npm run build && npm run desktop:assets && electron-builder --mac --universal --publish never --config.forceCodeSigning=true --config.mac.notarize=true",
+    "electron:build:mac:preview": "npm run build && npm run desktop:assets && electron-builder --mac dmg --universal --publish never --config.mac.identity=- --config.mac.hardenedRuntime=false --config.mac.notarize=false --config.extraMetadata.macPreview=true"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^6.1.1",
@@ -87,6 +89,15 @@
         }
       ],
       "icon": "build/icon.ico"
+    },
+    "mac": {
+      "target": ["dmg", "zip"],
+      "icon": "build/icon.png",
+      "category": "public.app-category.board-games",
+      "artifactName": "LAN-Chess-${version}-mac-${arch}.${ext}",
+      "extendInfo": {
+        "NSLocalNetworkUsageDescription": "LAN Chess connects to other players on your local network."
+      }
     },
     "nsis": {
       "oneClick": false,

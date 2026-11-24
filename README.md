@@ -95,7 +95,9 @@ npm start            # serves the built app on http://0.0.0.0:3001
 
 The server prints the LAN URL (e.g. `http://192.168.1.25:3001`) — share it with anyone on the same network. Players can also join by scanning the room's QR code or entering the 4-character room code at any instance's URL.
 
-### Desktop Application (Windows)
+### Desktop Application
+
+LAN Chess can be built as a universal macOS app for Apple Silicon and Intel. The [desktop guide](DESKTOP_APP.md) covers Mac preview builds, installation, and signed releases.
 
 Download the installer from the [v1.2.4 Release](https://github.com/darshitn/lan-chess/releases/tag/v1.2.4) ([`LAN-Chess-Setup-1.2.4.exe`](https://github.com/darshitn/lan-chess/releases/download/v1.2.4/LAN-Chess-Setup-1.2.4.exe)). Existing updater-enabled desktop installations can download the patch from Settings → Updates and restart to apply it.
 
@@ -107,6 +109,7 @@ Download the installer from the [v1.2.4 Release](https://github.com/darshitn/lan
 ```bash
 npm run electron:dev     # build and launch the Electron desktop shell
 npm run electron:build   # build and generate the Windows NSIS installer
+npm run electron:build:mac:preview  # build the universal Mac DMG on macOS
 ```
 For detailed desktop architecture, see [DESKTOP_APP.md](DESKTOP_APP.md).
 
