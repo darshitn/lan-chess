@@ -1,8 +1,8 @@
-import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Chess, type Move, type Square } from 'chess.js';
 import type { BoardDisplaySettings, BoardTheme, HighlightStyleId, PieceSetId } from '../../types/preferences.js';
 import { Chessboard } from '../Chessboard.js';
-import { ResponsiveBoardFrame } from '../ResponsiveBoardFrame.js';
+import { StudyBoardFrame } from '../StudyBoardFrame.js';
 import { PgnFenTools } from '../review/PgnFenTools.js';
 import { stockfishEngine, formatEngineScore } from '../../services/stockfish-engine.js';
 import { PositionSetup } from './PositionSetup.js';
@@ -33,34 +33,30 @@ export const PracticeBoard: React.FC<PracticeBoardProps> = ({
   const [isSetupOpen, setIsSetupOpen] = useState(false);
 
   const chess = useMemo(() => new Chess(fen), [fen]);
-  const fenRef = useRef(fen);
-  fenRef.current = fen;
-
-  // Opening detection
   const opening = useMemo(() => identifyOpening(moveHistory), [moveHistory]);
+  const [engineMessage, setEngineMessage] = useState('');
 
-  // Update engine eval when fen changes if engine is enabled. Results are
-  // correlated to the displayed FEN so a slow older search can never overwrite
-  // a newer position's evaluation.
-  const updateEngine = useCallback(async (requestedFen: string) => {
-    if (!isEngineOn) return;
-    const res = await stockfishEngine.evaluateFen(requestedFen, 12);
-    if (fenRef.current !== requestedFen) return; // stale result for an older position
-    if (!res) {
-      setEvalScore(null);
-      setBestMove(null);
-      return;
-    }
-    setEvalScore(formatEngineScore(res.score));
-    setBestMove(res.bestMoveSan || null);
-  }, [isEngineOn]);
-
-  // Stop any in-flight engine search when leaving the sandbox.
   useEffect(() => {
+    setEvalScore(null);
+    setBestMove(null);
+    if (!isEngineOn) return;
+    let current = true;
+    setEngineMessage('Analyzing…');
+    stockfishEngine.evaluateFen(fen, 12).then(result => {
+      if (!current) return;
+      setEngineMessage(result ? '' : 'Evaluation unavailable');
+      if (result) {
+        setEvalScore(formatEngineScore(result.score));
+        setBestMove(result.bestMoveSan || null);
+      }
+    }).catch(() => {
+      if (current) setEngineMessage('Evaluation unavailable');
+    });
     return () => {
+      current = false;
       stockfishEngine.cancelAnalysis();
     };
-  }, []);
+  }, [fen, isEngineOn]);
 
   const legalTargets = useMemo(() => {
     if (!selectedSquare) return new Map<Square, Move>();
@@ -79,7 +75,7 @@ export const PracticeBoard: React.FC<PracticeBoardProps> = ({
         setFen(newFen);
         setMoveHistory((prev) => [...prev, targetMove.san]);
         setSelectedSquare(null);
-        void updateEngine(newFen);
+
       } catch {
         setSelectedSquare(null);
       }
@@ -101,7 +97,7 @@ export const PracticeBoard: React.FC<PracticeBoardProps> = ({
         setFen(newFen);
         setMoveHistory((prev) => [...prev, move.san]);
         setSelectedSquare(null);
-        void updateEngine(newFen);
+
       }
     } catch {
       // Illegal drop ignored
@@ -121,34 +117,17 @@ export const PracticeBoard: React.FC<PracticeBoardProps> = ({
     setFen(newFen);
     setMoveHistory([]);
     setSelectedSquare(null);
-    void updateEngine(newFen);
+
   };
 
-  const toggleEngine = () => {
-    const next = !isEngineOn;
-    setIsEngineOn(next);
-    if (next) {
-      void updateEngine(fen);
-    } else {
-      setEvalScore(null);
-      setBestMove(null);
-    }
-  };
+  const toggleEngine = () => setIsEngineOn(value => !value);
 
   return (
     <div className="mx-auto min-h-screen max-w-6xl px-3 py-2 sm:px-6 sm:py-3.5">
       {/* Top Header */}
       <header className="mb-2 sm:mb-3 flex flex-wrap items-center justify-between gap-2.5 border-b border-slate-800 pb-2 sm:pb-2.5">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold uppercase tracking-[.25em] text-amber-400">
-              Training Sandbox
-            </span>
-            <span className="rounded bg-slate-800 px-2 py-0.5 text-xs text-slate-300">
-              Practice Board
-            </span>
-          </div>
-          <h1 className="text-2xl font-black text-white sm:text-3xl">Free Board Analysis</h1>
+          <h1 className="workspace-title">Practice board</h1>
           {opening && (
             <p className="text-xs text-amber-300 font-semibold mt-0.5">
               Opening: {opening.name} {opening.variation ? `(${opening.variation})` : ''} · {opening.eco}
@@ -160,39 +139,41 @@ export const PracticeBoard: React.FC<PracticeBoardProps> = ({
           <button
             type="button"
             onClick={toggleEngine}
+            aria-pressed={isEngineOn}
             className={`action-button px-3 py-1 text-xs font-bold ${
               isEngineOn ? 'bg-emerald-500 text-slate-950' : 'action-secondary text-slate-300'
             }`}
           >
-            {isEngineOn ? '⚡ Engine ON' : '⚡ Engine OFF'}
+            {isEngineOn ? 'Engine on' : 'Engine off'}
           </button>
           <button
             type="button"
             onClick={() => setIsSetupOpen(true)}
             className="action-button action-secondary px-3 py-1 text-xs text-amber-300"
           >
-            🧩 Setup Position
+            Set up position
           </button>
           <button
             type="button"
             onClick={onBackToPlay}
             className="action-button action-secondary px-3 py-1 text-xs"
           >
-            Exit Sandbox
+            Back to play
           </button>
         </div>
       </header>
 
       {/* Main Grid */}
-      <div className="grid gap-4 lg:gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
+      <div className="grid grid-cols-1 gap-4 lg:gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
         {/* Board column */}
-        <section className="mx-auto w-full max-w-[46rem]">
+        <section className="study-board-column mx-auto w-full min-w-0 max-w-[46rem]">
           <div className="mb-1.5 sm:mb-2 flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/90 px-3 py-1.5 text-xs">
             <span className="font-semibold text-white">
               {chess.turn() === 'w' ? 'White to move' : 'Black to move'}
               {chess.isCheck() ? ' (Check!)' : ''}
               {chess.isCheckmate() ? ' (Checkmate!)' : ''}
             </span>
+            {isEngineOn && !evalScore && <span role="status">{engineMessage}</span>}
             {isEngineOn && evalScore !== null && (
               <span className="font-mono font-bold text-amber-300">
                 Eval: {evalScore}
@@ -201,7 +182,7 @@ export const PracticeBoard: React.FC<PracticeBoardProps> = ({
             )}
           </div>
 
-          <ResponsiveBoardFrame>
+          <StudyBoardFrame>
             <Chessboard
               chess={chess}
               flipped={flipped}
@@ -216,7 +197,7 @@ export const PracticeBoard: React.FC<PracticeBoardProps> = ({
               onSquareClick={handleSquareClick}
               onPieceDrop={handlePieceDrop}
             />
-          </ResponsiveBoardFrame>
+          </StudyBoardFrame>
 
           <div className="mt-2 sm:mt-3 flex gap-2">
             <button
@@ -265,6 +246,9 @@ export const PracticeBoard: React.FC<PracticeBoardProps> = ({
       {/* Position Setup Modal */}
       {isSetupOpen && (
         <PositionSetup
+          initialFen={fen}
+          theme={theme}
+          pieceSet={pieceSet}
           onApplyPosition={(newFen) => {
             handleLoadCustomFen(newFen);
             setIsSetupOpen(false);

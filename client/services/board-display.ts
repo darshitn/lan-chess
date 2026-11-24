@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   DEFAULT_CUSTOM_BOARD_SIZE,
   DEFAULT_MIN_BOARD_SIZE,
@@ -170,6 +170,24 @@ export function useBoardDisplay(
     return Boolean(getFullscreenElement());
   });
 
+  const latestPrefs = useRef(displayPrefs);
+  useEffect(() => {
+    const receive = (prefs: BoardDisplayPreferences) => {
+      latestPrefs.current = prefs;
+      setDisplayPrefs(prefs);
+    };
+    const onChange = (event: Event) => receive((event as CustomEvent<BoardDisplayPreferences>).detail);
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === STORAGE_KEY_BOARD_DISPLAY || event.key === null) receive(loadBoardDisplayPreferences());
+    };
+    window.addEventListener(STORAGE_KEY_BOARD_DISPLAY, onChange);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener(STORAGE_KEY_BOARD_DISPLAY, onChange);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, []);
+
   const [fullscreenError, setFullscreenError] = useState<string | null>(null);
   const [isFocusDrawerOpen, setIsFocusDrawerOpen] = useState<boolean>(false);
 
@@ -230,11 +248,11 @@ export function useBoardDisplay(
   }, [isFocusDrawerOpen]);
 
   const updatePrefs = useCallback((updater: (prev: BoardDisplayPreferences) => BoardDisplayPreferences) => {
-    setDisplayPrefs((prev) => {
-      const next = updater(prev);
-      saveBoardDisplayPreferences(next);
-      return next;
-    });
+    const next = updater(latestPrefs.current);
+    latestPrefs.current = next;
+    setDisplayPrefs(next);
+    saveBoardDisplayPreferences(next);
+    window.dispatchEvent(new CustomEvent(STORAGE_KEY_BOARD_DISPLAY, { detail: next }));
   }, []);
 
   const setSizeMode = useCallback(
@@ -259,10 +277,7 @@ export function useBoardDisplay(
   const stepCustomSize = useCallback(
     (delta: number, currentActiveSize?: number) => {
       updatePrefs((prev) => {
-        const base =
-          prev.sizeMode === 'custom'
-            ? prev.customSize
-            : currentActiveSize ?? prev.customSize;
+        const base = currentActiveSize ?? prev.customSize;
         const newSize = Math.max(
           DEFAULT_MIN_BOARD_SIZE,
           Math.min(1600, Math.round(base + delta))

@@ -1,13 +1,11 @@
 import React, { useState } from 'react';
 import type {
-  EngineScore,
   GameAnalysisReport,
   MoveClassification,
 } from '../../services/stockfish-engine.js';
 import { formatEngineScore, scoreToNumeric } from '../../services/stockfish-engine.js';
 
 interface EngineAnalysisPanelProps {
-  currentEvaluation: EngineScore;
   currentPly: number;
   report: GameAnalysisReport | null;
   isAnalyzing: boolean;
@@ -32,7 +30,6 @@ const CLASSIFICATION_COLORS: Record<MoveClassification, { bg: string; text: stri
 };
 
 export const EngineAnalysisPanel: React.FC<EngineAnalysisPanelProps> = ({
-  currentEvaluation,
   currentPly,
   report,
   isAnalyzing,
@@ -48,7 +45,7 @@ export const EngineAnalysisPanel: React.FC<EngineAnalysisPanelProps> = ({
 
   // Find analysis for the currently displayed ply
   const activePosition = report?.positions.find((p) => p.ply === currentPly);
-  const activeScore = activePosition ? activePosition.evaluation : currentEvaluation;
+  const activeScore = activePosition?.evaluation;
   const analysisFailed = Boolean(activePosition && !activePosition.evaluation);
 
   // Evaluation bar height: clamp numeric centipawns between -800 and +800
@@ -106,7 +103,7 @@ export const EngineAnalysisPanel: React.FC<EngineAnalysisPanelProps> = ({
 
       {/* Depth Selector */}
       {!isAnalyzing && (
-        <div className="flex items-center justify-between border-t border-slate-800/80 pt-2 text-xs">
+        <div className="flex flex-wrap gap-2 items-center justify-between border-t border-slate-800/80 pt-2 text-xs">
           <span className="text-slate-400 font-semibold text-[11px]">Analysis Depth:</span>
           <div className="flex gap-1">
             {[
@@ -117,8 +114,9 @@ export const EngineAnalysisPanel: React.FC<EngineAnalysisPanelProps> = ({
               <button
                 key={d.depth}
                 type="button"
+                aria-pressed={selectedDepth === d.depth}
                 onClick={() => onDepthChange(d.depth)}
-                className={`rounded px-2 py-0.5 text-[10px] font-bold transition-all ${
+                className={`rounded px-2 py-1.5 text-xs font-bold transition-all ${
                   selectedDepth === d.depth
                     ? 'bg-amber-400 text-slate-900 shadow-sm'
                     : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
@@ -147,7 +145,8 @@ export const EngineAnalysisPanel: React.FC<EngineAnalysisPanelProps> = ({
         </div>
       )}
 
-      {/* Active Position Eval Display */}
+      {/* A numeric evaluation is available only for an analyzed move. */}
+      {activePosition && (
       <div className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/80 p-3">
         <div className="flex items-center gap-2.5">
           {/* Vertical Eval bar miniature */}
@@ -175,6 +174,7 @@ export const EngineAnalysisPanel: React.FC<EngineAnalysisPanelProps> = ({
         )}
       </div>
 
+      )}
       {/* Move Evaluation & Accuracy Callout */}
       {activePosition && (
         <div className="space-y-2 rounded-lg border border-slate-800 bg-slate-900/60 p-3">
@@ -235,21 +235,35 @@ export const EngineAnalysisPanel: React.FC<EngineAnalysisPanelProps> = ({
           <div>
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Evaluation Curve</span>
-              <span className="text-[10px] text-slate-500">Click graph to jump</span>
+              <span className="text-[10px] text-slate-500">Select a move</span>
             </div>
             <div
               className="mt-1.5 h-20 w-full overflow-hidden rounded-lg border border-slate-800 bg-slate-950 p-1 cursor-pointer"
+              role="slider"
+              tabIndex={0}
+              aria-label="Evaluation by half-move"
+              aria-valuemin={0}
+              aria-valuemax={report.positions.length}
+              aria-valuenow={currentPly}
+              onKeyDown={event => {
+                const keys: Record<string, number> = { ArrowLeft: currentPly - 1, ArrowRight: currentPly + 1, Home: 0, End: report.positions.length };
+                if (!(event.key in keys)) return;
+                event.preventDefault();
+                event.stopPropagation();
+                onSelectPly(Math.min(report.positions.length, Math.max(0, keys[event.key])));
+              }}
               onClick={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
                 const clickX = e.clientX - rect.left;
                 const ratio = Math.max(0, Math.min(1, clickX / rect.width));
                 const targetPly = Math.round(ratio * (report.positions.length - 1));
-                onSelectPly(targetPly);
+                const position = report.positions[targetPly];
+                if (position) onSelectPly(position.ply);
               }}
             >
               <svg className="h-full w-full" viewBox="0 0 200 60" preserveAspectRatio="none">
                 {/* Center line (0.0 eval) */}
-                <line x1="0" y1="30" x2="200" y2="30" stroke="#334155" strokeWidth="0.8" strokeDasharray="3 3" />
+                <line x1="0" y1="30" x2="200" y2="30" stroke="var(--border-soft)" strokeWidth="0.8" strokeDasharray="3 3" />
                 {/* Curve path */}
                 {report.positions.length > 1 && (
                   <path
@@ -263,17 +277,17 @@ export const EngineAnalysisPanel: React.FC<EngineAnalysisPanelProps> = ({
                       })
                       .join(' ')}
                     fill="none"
-                    stroke="#fbbf24"
+                    stroke="var(--accent-color)"
                     strokeWidth="1.6"
                   />
                 )}
                 {/* Current move marker dot */}
-                {report.positions.length > 1 && (
+                {activePosition?.evaluation && report.positions.length > 1 && (
                   <circle
-                    cx={(Math.max(0, currentPly) / (report.positions.length - 1)) * 200}
+                    cx={(Math.max(0, currentPly - 1) / (report.positions.length - 1)) * 200}
                     cy={30 - (Math.max(-600, Math.min(600, scoreToNumeric(activeScore ?? { type: 'cp', value: 0 }, 600))) / 600) * 26}
                     r="4"
-                    fill="#38bdf8"
+                    fill="var(--info-ink)"
                     stroke="#ffffff"
                     strokeWidth="1.2"
                   />

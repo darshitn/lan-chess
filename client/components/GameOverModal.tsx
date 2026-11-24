@@ -28,7 +28,7 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
   onReviewGame,
 }) => {
   let outcomeTitle = 'Game Finished';
-  let outcomeSubtitle = reason ?? '';
+  const outcomeSubtitle = reason ?? '';
 
   if (winner === 'draw') {
     outcomeTitle = 'Draw';
@@ -65,7 +65,6 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
             onClick={onReviewGame}
             className="action-button action-primary w-full text-sm font-bold flex items-center justify-center gap-2"
           >
-            <span>🔍</span>
             <span>Review Game & Analysis</span>
           </button>
 

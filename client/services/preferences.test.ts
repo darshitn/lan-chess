@@ -158,6 +158,7 @@ describe('preferences service', () => {
 
   it('resetAppearancePreferences resets only appearance tokens while keeping sound, player info, and time controls', () => {
     const customUserPrefs: UserPreferences = {
+      analysisDepth: 15,
       activeThemeId: 'obsidian',
       pieceSet: 'glass',
       highlightStyle: 'bright',

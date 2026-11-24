@@ -29,6 +29,7 @@ export type UiThemeId =
   | 'slate'
   | 'ivory'
   | 'walnut'
+  | 'royal'
   | 'dark'
   | 'light'
   | 'midnight'
@@ -60,6 +61,7 @@ export interface AnimationPreferences {
 }
 
 export interface UserPreferences {
+  analysisDepth: 10 | 12 | 15;
   activeThemeId: string;
   pieceSet: PieceSetId;
   highlightStyle: HighlightStyleId;

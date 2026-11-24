@@ -18,6 +18,18 @@ export const BUILTIN_BOARD_THEMES: BoardTheme[] = [
     checkmateSquare: '#dc2626',
   },
   {
+    id: 'sea-glass',
+    name: 'Sea Glass',
+    description: 'Mist and tidal teal squares with a seafoam selection',
+    lightSquare: '#b9d5d2',
+    darkSquare: '#52797e',
+    selectedSquare: '#76cebd',
+    lastMoveSquare: '#98c5bf',
+    legalMoveColor: 'rgba(12, 45, 51, 0.55)',
+    checkSquare: '#f18d7f',
+    checkmateSquare: '#d15f63',
+  },
+  {
     id: 'ivory',
     name: 'Ivory',
     description: 'Warm cream and calming sage foliage tones',
@@ -47,8 +59,8 @@ export const BUILTIN_BOARD_THEMES: BoardTheme[] = [
     description: 'Traditional tournament green and cream styling',
     lightSquare: '#ebecd0',
     darkSquare: '#739552',
-    selectedSquare: '#f6f669',
-    lastMoveSquare: '#bbcb2b',
+    selectedSquare: '#a9d0a6',
+    lastMoveSquare: '#a7bc95',
     legalMoveColor: 'rgba(0, 0, 0, 0.25)',
     checkSquare: '#e55c57',
     checkmateSquare: '#cc2929',
@@ -59,7 +71,7 @@ export const BUILTIN_BOARD_THEMES: BoardTheme[] = [
     description: 'Warm hand-crafted oak and walnut tones',
     lightSquare: '#f0d9b5',
     darkSquare: '#b58863',
-    selectedSquare: '#fbbf24',
+    selectedSquare: '#dca581',
     lastMoveSquare: '#d7cd58',
     legalMoveColor: 'rgba(15, 23, 42, 0.28)',
     checkSquare: '#e55c57',
@@ -71,7 +83,7 @@ export const BUILTIN_BOARD_THEMES: BoardTheme[] = [
     description: 'Deep mahogany and rosewood texture',
     lightSquare: '#cca574',
     darkSquare: '#85582f',
-    selectedSquare: '#eab308',
+    selectedSquare: '#cb977a',
     lastMoveSquare: '#b4833e',
     legalMoveColor: 'rgba(30, 20, 10, 0.35)',
     checkSquare: '#dc2626',
@@ -107,7 +119,7 @@ export const BUILTIN_BOARD_THEMES: BoardTheme[] = [
     description: 'Regal violet and ivory majesty',
     lightSquare: '#e9d5ff',
     darkSquare: '#6b21a8',
-    selectedSquare: '#facc15',
+    selectedSquare: '#c5a1e8',
     lastMoveSquare: '#c084fc',
     legalMoveColor: 'rgba(255, 255, 255, 0.25)',
     checkSquare: '#f43f5e',
@@ -131,7 +143,7 @@ export const BUILTIN_BOARD_THEMES: BoardTheme[] = [
     description: 'Earthy moss and deep pine foliage',
     lightSquare: '#dcfce7',
     darkSquare: '#166534',
-    selectedSquare: '#facc15',
+    selectedSquare: '#89c7a1',
     lastMoveSquare: '#86efac',
     legalMoveColor: 'rgba(20, 40, 20, 0.28)',
     checkSquare: '#f87171',
@@ -179,8 +191,8 @@ export const BUILTIN_BOARD_THEMES: BoardTheme[] = [
     description: 'Cool silver squares on warm stone gray',
     lightSquare: '#cdd1d4',
     darkSquare: '#7d7461',
-    selectedSquare: '#f5c542',
-    lastMoveSquare: '#dbd07a',
+    selectedSquare: '#98b5bf',
+    lastMoveSquare: '#b5bdbb',
     legalMoveColor: 'rgba(20, 25, 30, 0.3)',
     checkSquare: '#e55c57',
     checkmateSquare: '#cc2929',
@@ -264,7 +276,7 @@ export const BUILTIN_BOARD_THEMES: BoardTheme[] = [
     description: 'Rare aged burl wood inlay and brass edges',
     lightSquare: '#d4a373',
     darkSquare: '#603813',
-    selectedSquare: '#f59e0b',
+    selectedSquare: '#c98f74',
     lastMoveSquare: '#b45309',
     legalMoveColor: 'rgba(96, 56, 19, 0.35)',
     checkSquare: '#e11d48',
@@ -281,6 +293,15 @@ export const ONE_CLICK_PRESETS: OneClickPreset[] = [
     pieceSet: 'classic',
     highlightStyle: 'classic',
     uiTheme: 'slate',
+  },
+  {
+    id: 'preset-sea-glass',
+    name: 'Sea Glass',
+    description: 'Cut crystal and smoked glass on a tidal teal board',
+    themeId: 'sea-glass',
+    pieceSet: 'glass',
+    highlightStyle: 'soft',
+    uiTheme: 'glass',
   },
   {
     id: 'preset-ivory',
@@ -321,11 +342,11 @@ export const ONE_CLICK_PRESETS: OneClickPreset[] = [
   {
     id: 'preset-royal',
     name: 'Royal Chess',
-    description: 'Opulent purple and gold majesty',
+    description: 'Violet squares and a lilac interface',
     themeId: 'royal',
     pieceSet: 'classic',
     highlightStyle: 'bright',
-    uiTheme: 'dark',
+    uiTheme: 'royal',
   },
   {
     id: 'preset-cyber',
@@ -343,7 +364,7 @@ export const ONE_CLICK_PRESETS: OneClickPreset[] = [
     themeId: 'wooden',
     pieceSet: 'wood',
     highlightStyle: 'classic',
-    uiTheme: 'dark',
+    uiTheme: 'walnut',
   },
   {
     id: 'preset-minimal',
@@ -357,6 +378,7 @@ export const ONE_CLICK_PRESETS: OneClickPreset[] = [
 ];
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
+  analysisDepth: 12,
   activeThemeId: 'slate',
   pieceSet: 'classic',
   highlightStyle: 'classic',
@@ -405,7 +427,7 @@ const STORAGE_KEYS = {
 
 const PIECE_SET_IDS = ['classic', 'modern', 'minimal', 'glass', 'wood', 'neon', 'cyber', 'silhouette'] as const;
 const HIGHLIGHT_STYLE_IDS = ['classic', 'soft', 'bright', 'minimal', 'neon'] as const;
-const UI_THEME_IDS = ['slate', 'ivory', 'walnut', 'dark', 'light', 'midnight', 'oled', 'glass', 'cyber'] as const;
+const UI_THEME_IDS = ['slate', 'ivory', 'walnut', 'dark', 'royal', 'light', 'midnight', 'oled', 'glass', 'cyber'] as const;
 const COORDINATE_STYLES = ['inside', 'outside', 'small', 'large'] as const;
 const ANIMATION_SPEEDS = ['instant', 'smooth', 'fast'] as const;
 const PREFERRED_COLORS = ['w', 'b', 'random'] as const;
@@ -434,7 +456,7 @@ function stringOr(value: unknown, fallback: string, maxLength = 64): string {
 function colorOr(value: unknown, fallback: string): string {
   if (typeof value !== 'string') return fallback;
   const trimmed = value.trim();
-  if (/^#[0-9a-fA-F]{3,8}$/.test(trimmed)) return trimmed;
+  if (/^#(?:[\da-f]{3,4}|[\da-f]{6}|[\da-f]{8})$/i.test(trimmed)) return trimmed;
   if (/^rgba?\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*(,\s*[\d.]+\s*)?\)$/.test(trimmed)) return trimmed;
   return fallback;
 }
@@ -450,6 +472,7 @@ export function loadUserPreferences(): UserPreferences {
     const storedAnimation = (parsed.animation ?? {}) as Record<string, unknown>;
 
     return {
+      analysisDepth: parsed.analysisDepth === 10 || parsed.analysisDepth === 15 ? parsed.analysisDepth : 12,
       activeThemeId: stringOr(parsed.activeThemeId, DEFAULT_PREFERENCES.activeThemeId),
       pieceSet: oneOf(parsed.pieceSet, PIECE_SET_IDS, DEFAULT_PREFERENCES.pieceSet),
       highlightStyle: oneOf(parsed.highlightStyle, HIGHLIGHT_STYLE_IDS, DEFAULT_PREFERENCES.highlightStyle),
@@ -501,6 +524,8 @@ export function saveUserPreferences(prefs: UserPreferences): void {
 function isValidThemeColorPair(value: unknown): boolean {
   const t = value as Record<string, unknown>;
   return (
+    typeof t.id === 'string' && t.id.length > 0 &&
+    typeof t.name === 'string' && t.name.length > 0 &&
     typeof t.lightSquare === 'string' &&
     typeof t.darkSquare === 'string' &&
     typeof t.selectedSquare === 'string' &&
@@ -575,6 +600,7 @@ export function applyUiThemeToDom(themeId: string): void {
     'theme-ivory',
     'theme-walnut',
     'theme-dark',
+    'theme-royal',
     'theme-light',
     'theme-midnight',
     'theme-oled',

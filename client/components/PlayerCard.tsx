@@ -1,5 +1,6 @@
 import React from 'react';
 import type { CapturedPiece, PlayerColor } from '../../shared/types.js';
+import { formatClock } from '../utils/chess-helpers.js';
 import { CapturedPieces } from './CapturedPieces.js';
 
 interface PlayerCardProps {
@@ -11,15 +12,9 @@ interface PlayerCardProps {
   advantage?: number;
   isLocalPlayer: boolean;
   isDisconnected?: boolean;
+  avatar?: string;
 }
 
-function formatClock(ms: number | null): string {
-  if (ms === null) return '∞';
-  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-}
 
 export const PlayerCard: React.FC<PlayerCardProps> = React.memo(({
   name,
@@ -30,30 +25,23 @@ export const PlayerCard: React.FC<PlayerCardProps> = React.memo(({
   advantage,
   isLocalPlayer,
   isDisconnected,
+  avatar,
 }) => {
   const isLowTime = timeMs !== null && timeMs <= 15000;
   const isWhite = color === 'w';
 
   return (
     <div
-      className={`player-card rounded-xl border p-2 sm:p-2.5 lg:p-3 transition-all duration-200 ${
-        isTurn
-          ? 'border-amber-400/80 bg-slate-800/90 shadow-md shadow-amber-500/10'
-          : 'border-slate-800 bg-slate-900/60'
-      }`}
+      className="player-card"
+      data-active={isTurn}
     >
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          <span
-            className={`inline-block h-3.5 w-3.5 rounded-full border ${
-              isWhite
-                ? 'border-slate-300 bg-white'
-                : 'border-slate-700 bg-slate-950'
-            }`}
-            aria-hidden="true"
-          />
+          <span className="seat-marker" data-color={color} aria-label={isWhite ? 'White pieces' : 'Black pieces'}>
+            {isLocalPlayer && avatar ? avatar : isWhite ? '♙' : '♟'}
+          </span>
           <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
+            <div className="flex min-w-0 items-center gap-1.5">
               <span className="truncate text-sm font-semibold text-white">
                 {name}
               </span>
@@ -74,13 +62,7 @@ export const PlayerCard: React.FC<PlayerCardProps> = React.memo(({
 
         {timeMs !== null && (
           <div
-            className={`rounded-lg px-2.5 py-1 font-mono text-base font-bold tabular-nums transition-colors ${
-              isLowTime
-                ? 'bg-rose-950/80 text-rose-300 animate-pulse border border-rose-500/40'
-                : isTurn
-                ? 'bg-amber-400/20 text-amber-300 border border-amber-400/30'
-                : 'bg-slate-800 text-slate-300 border border-slate-700'
-            }`}
+            className="player-clock" data-low={isLowTime}
           >
             {formatClock(timeMs)}
           </div>

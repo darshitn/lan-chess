@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Chess, type Move, type Square } from 'chess.js';
 import type { BoardDisplaySettings, BoardTheme, HighlightStyleId, PieceSetId } from '../../types/preferences.js';
 import { Chessboard } from '../Chessboard.js';
-import { ResponsiveBoardFrame } from '../ResponsiveBoardFrame.js';
+import { StudyBoardFrame } from '../StudyBoardFrame.js';
 
 export interface PuzzleRecord {
   id: string;
@@ -122,6 +122,7 @@ export const PuzzlePlayer: React.FC<PuzzlePlayerProps> = ({
   const [resetToken, setResetToken] = useState(0);
   const [currentStep, setCurrentStep] = useState(0);
   const [fen, setFen] = useState<string>(() => PUZZLE_DATABASE[0].fen);
+  const [incorrect, setIncorrect] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [isSolved, setIsSolved] = useState(false);
   const [showHint, setShowHint] = useState(false);
@@ -158,6 +159,7 @@ export const PuzzlePlayer: React.FC<PuzzlePlayerProps> = ({
     setCurrentStep(0);
     setIsSolved(false);
     setStatusMsg(null);
+    setIncorrect(false);
     setSelectedSquare(null);
     setWaitingReply(false);
   }, [puzzleIndex, puzzles, resetToken]);
@@ -203,6 +205,7 @@ export const PuzzlePlayer: React.FC<PuzzlePlayerProps> = ({
       move = null;
     }
     if (!move) {
+      setIncorrect(true);
       setStatusMsg('That move is not legal here.');
       setSelectedSquare(null);
       return;
@@ -212,11 +215,13 @@ export const PuzzlePlayer: React.FC<PuzzlePlayerProps> = ({
     const sameMove =
       move.san === expectedSan || move.san.replace('#', '+') === expectedSan.replace('#', '+');
     if (!sameMove) {
-      setStatusMsg('❌ Not the best move. Try again!');
+      setIncorrect(true);
+      setStatusMsg('Try another move.');
       setSelectedSquare(null);
       return;
     }
 
+    setIncorrect(false);
     const fenAfterSolver = attempt.fen();
     const nextStep = currentStep + 1;
     setFen(fenAfterSolver);
@@ -229,7 +234,7 @@ export const PuzzlePlayer: React.FC<PuzzlePlayerProps> = ({
 
     if (isFinalMove || !opponentReply) {
       setIsSolved(true);
-      setStatusMsg('🎉 Excellent! Puzzle solved successfully.');
+      setStatusMsg('Puzzle solved.');
       return;
     }
 
@@ -247,7 +252,7 @@ export const PuzzlePlayer: React.FC<PuzzlePlayerProps> = ({
         setStatusMsg('Continue the sequence — find the best move.');
       } catch {
         setIsSolved(true);
-        setStatusMsg('🎉 Puzzle sequence complete.');
+        setStatusMsg('Puzzle sequence complete.');
       } finally {
         if (playTokenRef.current === token) setWaitingReply(false);
       }
@@ -270,6 +275,13 @@ export const PuzzlePlayer: React.FC<PuzzlePlayerProps> = ({
     }
   };
 
+  const pageStart = Math.floor(puzzleIndex / 24) * 24;
+  const hint = useMemo(() => {
+    if (!showHint || isSolved || waitingReply) return '';
+    const expected = currentPuzzle.moves[currentStep];
+    const move = chess.moves({ verbose: true }).find(candidate => candidate.san === expected);
+    return move ? `Look for a move from ${move.from}.` : `Look for a ${currentPuzzle.theme.toLowerCase()}.`;
+  }, [showHint, isSolved, waitingReply, currentPuzzle, currentStep, chess]);
   if (!library) {
     return (
       <div className="mx-auto flex min-h-screen max-w-3xl items-center justify-center px-4">
@@ -293,7 +305,7 @@ export const PuzzlePlayer: React.FC<PuzzlePlayerProps> = ({
         <div>
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold uppercase tracking-[.25em] text-amber-400">
-              Tactical Training
+              Puzzles
             </span>
             <span className="rounded bg-slate-800 px-2 py-0.5 text-xs text-slate-300">
               Puzzle {puzzleIndex + 1} of {puzzles.length}
@@ -301,7 +313,7 @@ export const PuzzlePlayer: React.FC<PuzzlePlayerProps> = ({
           </div>
           <h1 className="text-2xl font-black text-white sm:text-3xl">{currentPuzzle.title}</h1>
           <p className="text-xs text-amber-300 font-semibold mt-0.5">
-            Theme: {currentPuzzle.theme} · {chess.turn() === 'w' ? 'White to move' : 'Black to move'}
+            {isSolved ? 'Solved' : waitingReply ? 'Opponent to move' : chess.turn() === 'w' ? 'White to move' : 'Black to move'}
           </p>
         </div>
 
@@ -351,16 +363,16 @@ export const PuzzlePlayer: React.FC<PuzzlePlayerProps> = ({
       </div>
 
       {/* Main Grid */}
-      <div className="grid gap-4 lg:gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
+      <div className="grid grid-cols-1 gap-4 lg:gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
         {/* Board column */}
-        <section className="mx-auto w-full max-w-[46rem]">
+        <section className="study-board-column mx-auto w-full min-w-0 max-w-[46rem]">
           {/* Status message */}
           {statusMsg && (
             <div
               className={`mb-2 sm:mb-3 rounded-lg p-2.5 sm:p-3 text-xs font-bold text-center ${
                 isSolved
-                  ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-800 animate-pulse'
-                  : 'bg-rose-950/80 text-rose-300 border border-rose-800'
+                  ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-800'
+                  : incorrect ? 'bg-rose-950/80 text-rose-300 border border-rose-800' : 'bg-slate-800 text-slate-200 border border-slate-700'
               }`}
               role="status"
             >
@@ -368,7 +380,7 @@ export const PuzzlePlayer: React.FC<PuzzlePlayerProps> = ({
             </div>
           )}
 
-          <ResponsiveBoardFrame>
+          <StudyBoardFrame>
             <Chessboard
               chess={chess}
               flipped={puzzleFlipped}
@@ -383,22 +395,24 @@ export const PuzzlePlayer: React.FC<PuzzlePlayerProps> = ({
               onSquareClick={handleSquareClick}
               onPieceDrop={handleMoveAttempt}
             />
-          </ResponsiveBoardFrame>
+          </StudyBoardFrame>
 
           <div className="mt-2 sm:mt-3 flex gap-2">
             <button
               type="button"
+              disabled={isSolved || waitingReply}
+              aria-pressed={showHint}
               onClick={() => setShowHint((h) => !h)}
               className="action-button action-secondary flex-1 text-xs text-amber-300"
             >
-              💡 {showHint ? 'Hide Hint' : 'Show Hint'}
+              {showHint ? 'Hide Hint' : 'Show Hint'}
             </button>
             <button
               type="button"
               onClick={() => loadPuzzle(puzzleIndex)}
               className="action-button action-secondary flex-1 text-xs"
             >
-              🔄 Reset Puzzle
+              Reset puzzle
             </button>
             {isSolved && (
               <button
@@ -431,10 +445,10 @@ export const PuzzlePlayer: React.FC<PuzzlePlayerProps> = ({
               ))}
             </div>
 
-            {showHint && (
+            {showHint && hint && (
               <div className="mt-3 rounded-lg border border-amber-500/40 bg-amber-400/10 p-3 text-xs text-amber-200">
                 <span className="font-bold">Hint: </span>
-                Look for a {currentPuzzle.theme.toLowerCase()} — the tactic wins material or mates.
+                {hint}
               </div>
             )}
           </div>
@@ -445,25 +459,26 @@ export const PuzzlePlayer: React.FC<PuzzlePlayerProps> = ({
               Puzzles from the Lichess open database (CC0), filtered for clean tactics.
             </p>
             <div className="move-list mt-2 max-h-56">
-              {puzzles.slice(0, 200).map((p, i) => (
+              {puzzles.slice(pageStart, pageStart + 24).map((p, offset) => (
                 <button
                   key={p.id}
                   type="button"
-                  onClick={() => loadPuzzle(i)}
+                  onClick={() => loadPuzzle(pageStart + offset)}
                   className={`move-cell flex w-full items-center justify-between text-left text-xs ${
-                    puzzleIndex === i ? 'active-move' : 'text-slate-300'
+                    puzzleIndex === pageStart + offset ? 'active-move' : 'text-slate-300'
                   }`}
                 >
                   <span>
-                    {i + 1}. {p.theme}
+                    {pageStart + offset + 1}. {p.theme}
                   </span>
                   <span className="font-mono text-[10px] text-slate-500">{p.rating}</span>
                 </button>
               ))}
-              {puzzles.length > 200 && (
-                <p className="px-1 py-1 text-[10px] text-slate-500">
-                  +{puzzles.length - 200} more — use Prev/Next or the difficulty filter.
-                </p>
+              {puzzles.length > 24 && (
+                <div className="flex items-center justify-between gap-2 border-t border-slate-700 pt-2">
+                  <button className="action-button action-secondary text-xs" disabled={pageStart === 0} onClick={() => loadPuzzle(pageStart - 24)}>Previous 24</button>
+                  <button className="action-button action-secondary text-xs" disabled={pageStart + 24 >= puzzles.length} onClick={() => loadPuzzle(pageStart + 24)}>Next 24</button>
+                </div>
               )}
             </div>
           </div>

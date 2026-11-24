@@ -50,7 +50,7 @@ export const BoardAnnotations: React.FC<BoardAnnotationsProps> = React.memo(({
           refY="2"
           orient="auto"
         >
-          <polygon points="0 0.5, 3.5 2, 0 3.5" fill="#f59e0b" opacity="0.88" />
+          <polygon points="0 0.5, 3.5 2, 0 3.5" fill="var(--accent-color)" opacity="0.88" />
         </marker>
         <marker
           id="arrowhead-ghost"
@@ -75,7 +75,7 @@ export const BoardAnnotations: React.FC<BoardAnnotationsProps> = React.memo(({
             cy={center.y}
             r={radius}
             fill="none"
-            stroke="#f59e0b"
+            stroke="var(--accent-color)"
             strokeWidth="1.2"
             opacity="0.85"
           />
@@ -102,7 +102,7 @@ export const BoardAnnotations: React.FC<BoardAnnotationsProps> = React.memo(({
             y1={start.y}
             x2={targetX}
             y2={targetY}
-            stroke="#f59e0b"
+            stroke="var(--accent-color)"
             strokeWidth="1.6"
             strokeLinecap="round"
             opacity="0.88"

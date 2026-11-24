@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 
 const FOCUSABLE_SELECTOR =
-  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  'button, [href], input, select, textarea, summary, [tabindex]';
 
 /**
  * Modal keyboard behavior: Escape closes the dialog, Tab is trapped inside it,
@@ -29,8 +29,17 @@ export function useModalBehavior(
 
     const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
-    const focusables = () =>
-      Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+    const focusables = () => Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+      .filter(item => {
+        if (item.matches(':disabled, [tabindex="-1"], input[type="hidden"]') || item.closest('[inert], [hidden]')) return false;
+        const folded = item.closest('details:not([open])');
+        if (folded && !folded.querySelector(':scope > summary')?.contains(item)) return false;
+        for (let node: HTMLElement | null = item; node && node !== container; node = node.parentElement) {
+          const style = window.getComputedStyle(node);
+          if (style.display === 'none' || style.visibility === 'hidden') return false;
+        }
+        return true;
+      });
 
     (focusables()[0] ?? container).focus();
 

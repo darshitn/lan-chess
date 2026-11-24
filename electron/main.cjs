@@ -206,10 +206,10 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
-    minWidth: 980,
-    minHeight: 640,
+    minWidth: 360,
+    minHeight: 480,
     show: false,
-    backgroundColor: '#020617',
+    backgroundColor: '#171c1b',
     title: 'LAN Chess',
     icon: getAppIcon(),
     webPreferences: {

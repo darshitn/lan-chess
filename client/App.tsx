@@ -16,8 +16,9 @@ import { Lobby } from './components/Lobby.js';
 import { Navigation } from './components/Navigation.js';
 import { Chessboard } from './components/Chessboard.js';
 import { ResponsiveBoardFrame } from './components/ResponsiveBoardFrame.js';
-import { BoardControls } from './components/BoardControls.js';
+import { BoardDisplayControls } from './components/BoardControls.js';
 import { useBoardDisplay } from './services/board-display.js';
+import { useModalBehavior } from './utils/modal-behavior.js';
 import { WaitingPanel } from './components/WaitingPanel.js';
 import { getRoomCodeFromUrl } from './services/invite.js';
 import { PlayerCard } from './components/PlayerCard.js';
@@ -113,6 +114,7 @@ export function App() {
 
   // Application navigation view
   const [currentView, setCurrentView] = useState<'play' | 'computer' | 'history' | 'review' | 'practice' | 'puzzles'>('play');
+  const [reviewOrigin, setReviewOrigin] = useState<'play' | 'history'>('play');
   const [reviewGame, setReviewGame] = useState<SavedGame | null>(null);
   const [computerConfig, setComputerConfig] = useState<ComputerGameConfig | null>(null);
   const [isComputerGameActive, setIsComputerGameActive] = useState(false);
@@ -133,6 +135,9 @@ export function App() {
   const [preferences, setPreferences] = useState<UserPreferences>(() => loadUserPreferences());
   const [customThemes, setCustomThemes] = useState<BoardTheme[]>(() => loadCustomThemes());
   const [savedGames, setSavedGames] = useState<SavedGame[]>(() => getSavedGames());
+  useEffect(() => {
+    if (currentView === 'history') setSavedGames(getSavedGames());
+  }, [currentView]);
 
   // Multiplayer Game state
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -163,6 +168,7 @@ export function App() {
   const [allowTakebacks, setAllowTakebacks] = useState(true);
 
   const boardDisplay = useBoardDisplay();
+  const drawerRef = useModalBehavior(boardDisplay.closeFocusDrawer, true, Boolean(gameState) && boardDisplay.focusBoard && boardDisplay.isFocusDrawerOpen);
   const [measuredBoard, setMeasuredBoard] = useState({
     currentSize: 560,
     fitSize: 560,
@@ -234,6 +240,10 @@ export function App() {
   useEffect(() => {
     applyUiThemeToDom(preferences.uiTheme);
   }, [preferences.uiTheme]);
+
+  useEffect(() => {
+    document.documentElement.dataset.motion = preferences.animation.enabled ? preferences.animation.speed : 'instant';
+  }, [preferences.animation]);
 
   const isMultiplayerActive = isMultiplayerGameActive(gameState);
   const isComputerActive = currentView === 'computer' && isComputerGameActive;
@@ -313,14 +323,9 @@ export function App() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [premove]);
 
-  // Auto-orient board to Black's perspective when playing Black
   useEffect(() => {
-    if (color === 'b') {
-      setFlipped(true);
-    } else if (color === 'w') {
-      setFlipped(false);
-    }
-  }, [color]);
+    setFlipped((preferences.preferredColor === 'random' ? color : preferences.preferredColor) === 'b');
+  }, [color, preferences.preferredColor]);
 
   const handleUpdatePreferences = (newPrefs: UserPreferences) => {
     setPreferences(newPrefs);
@@ -831,12 +836,14 @@ export function App() {
       opening: identifyOpening(gameState.moves.map((m) => m.san)),
     };
 
+    setReviewOrigin('play');
     setReviewGame(gameRecord);
     setCurrentView('review');
   };
 
   // History item select
   const handleSelectHistoryGame = (game: SavedGame) => {
+    setReviewOrigin('history');
     setReviewGame(game);
     setCurrentView('review');
   };
@@ -864,7 +871,7 @@ export function App() {
           pieceSet={preferences.pieceSet}
           highlightStyle={preferences.highlightStyle}
           boardSettings={preferences.boardSettings}
-          onExitReview={() => setCurrentView('play')}
+          onExitReview={() => setCurrentView(reviewOrigin)}
         />
       );
     } else if (currentView === 'history') {
@@ -911,8 +918,10 @@ export function App() {
           highlightStyle={preferences.highlightStyle}
           boardSettings={preferences.boardSettings}
           soundSettings={preferences.sound}
+          preferredColor={preferences.preferredColor}
           onBackToLobby={() => setCurrentView('play')}
           onReviewGame={(game) => {
+            setReviewOrigin('play');
             setReviewGame(game);
             setCurrentView('review');
           }}
@@ -948,6 +957,8 @@ export function App() {
 
           <div className="px-4">
             <Lobby
+              boardTheme={activeTheme}
+              pieceSet={preferences.pieceSet}
               initialMode={invitedRoomCode ? 'join' : undefined}
               playerName={preferences.playerName}
               onNameChange={(name) => handleUpdatePreferences({ ...preferences, playerName: name })}
@@ -1028,7 +1039,7 @@ export function App() {
             )}
           </div>
           <h1 className="mt-0.5 text-2xl font-black tracking-tight text-white sm:text-3xl">
-            LAN CHESS
+            LAN Chess
           </h1>
         </div>
 
@@ -1080,7 +1091,7 @@ export function App() {
             className="action-button action-secondary px-2.5 py-1 text-xs"
             title="Settings & Themes"
           >
-            ⚙️
+            Settings
           </button>
 
           <button
@@ -1205,7 +1216,7 @@ export function App() {
 
       {/* Main Grid: Board Column + Sidebar Column */}
       <div
-        className={`grid gap-4 lg:gap-6 ${
+        className={`grid grid-cols-1 gap-4 lg:gap-6 ${isWaitingRoom && !boardDisplay.focusBoard ? 'lg:grid-rows-[max-content_1fr]' : ''} ${
           boardDisplay.focusBoard ? 'lg:grid-cols-1' : 'lg:grid-cols-[minmax(0,1fr)_22rem]'
         } lg:items-start`}
       >
@@ -1222,23 +1233,11 @@ export function App() {
             isWaitingRoom && !boardDisplay.focusBoard ? 'order-2 lg:order-none lg:col-start-1 lg:row-start-1 lg:row-span-2' : ''
           }`}
         >
-          {/* Top Player Card */}
-          <div
-            className="mx-auto w-full mb-1.5 sm:mb-2"
-            style={{ maxWidth: measuredBoard.currentSize ? `${measuredBoard.currentSize}px` : undefined }}
-          >
-            <PlayerCard
-              name={topSeat === 'w' ? gameState.whiteName : (gameState.blackName ?? 'Black')}
-              color={topSeat}
-              isTurn={gameState.turn === topSeat && gameState.status === 'active'}
-              timeMs={topSeat === 'w' ? gameState.whiteTimeMs : gameState.blackTimeMs}
-              capturedPieces={topSeat === 'w' ? capturedWhite : capturedBlack}
-              advantage={topSeat === 'w' ? whiteAdvantage : blackAdvantage}
-              isLocalPlayer={role === 'player' && color === topSeat}
-              isDisconnected={Boolean(opponentDisconnected && role === 'player' && color !== topSeat)}
-            />
-          </div>
-
+          {boardDisplay.focusBoard && (
+            <div className="focus-board-tools">
+              <BoardDisplayControls display={boardDisplay} measure={measuredBoard} />
+            </div>
+          )}
           {/* Status banner */}
           <div
             className="mx-auto w-full mb-1.5 sm:mb-2 flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/90 px-3 py-1.5 text-xs"
@@ -1261,27 +1260,21 @@ export function App() {
             <span className="font-mono text-slate-400">{isViewingHistory ? `Move ${currentMoveNumber} (Live)` : `Move ${currentMoveNumber}`}</span>
           </div>
 
-          {/* Board Controls Toolbar */}
+          {/* Top Player Card */}
           <div
-            className="mx-auto w-full"
+            className="mx-auto w-full mb-1.5 sm:mb-2"
             style={{ maxWidth: measuredBoard.currentSize ? `${measuredBoard.currentSize}px` : undefined }}
           >
-            <BoardControls
-              sizeMode={boardDisplay.sizeMode}
-              currentSize={measuredBoard.currentSize}
-              fitSize={measuredBoard.fitSize}
-              maxAllowedWidth={measuredBoard.maxAllowedWidth}
-              focusBoard={boardDisplay.focusBoard}
-              isFullscreen={boardDisplay.isFullscreen}
-              isFullscreenSupported={boardDisplay.isFullscreenSupported}
-              fullscreenError={boardDisplay.fullscreenError}
-              onClearFullscreenError={boardDisplay.clearFullscreenError}
-              onSetSizeMode={boardDisplay.setSizeMode}
-              onCustomSizeChange={boardDisplay.setCustomSize}
-              onStepSize={(delta) => boardDisplay.stepCustomSize(delta, measuredBoard.currentSize)}
-              onResetToFit={boardDisplay.resetToFit}
-              onToggleFocusBoard={boardDisplay.toggleFocusBoard}
-              onToggleFullscreen={boardDisplay.toggleFullscreen}
+            <PlayerCard
+              name={topSeat === 'w' ? gameState.whiteName : (gameState.blackName ?? 'Black')}
+              color={topSeat}
+              isTurn={gameState.turn === topSeat && gameState.status === 'active'}
+              timeMs={topSeat === 'w' ? gameState.whiteTimeMs : gameState.blackTimeMs}
+              capturedPieces={topSeat === 'w' ? capturedWhite : capturedBlack}
+              advantage={topSeat === 'w' ? whiteAdvantage : blackAdvantage}
+              isLocalPlayer={role === 'player' && color === topSeat}
+              avatar={preferences.avatar}
+              isDisconnected={Boolean(opponentDisconnected && role === 'player' && color !== topSeat)}
             />
           </div>
 
@@ -1311,16 +1304,7 @@ export function App() {
             />
           </ResponsiveBoardFrame>
 
-          <BoardReplayControls
-            viewedPly={viewedPly}
-            moveCount={moveCount}
-            isViewingHistory={isViewingHistory}
-            viewedMoveLabel={viewedMoveLabel}
-            onPrevious={handlePreviousReplay}
-            onNext={handleNextReplay}
-            onLive={handleLiveReplay}
-            maxWidth={measuredBoard.currentSize}
-          />
+
 
           {/* Bottom Player Card */}
           <div
@@ -1335,6 +1319,7 @@ export function App() {
               capturedPieces={bottomSeat === 'w' ? capturedWhite : capturedBlack}
               advantage={bottomSeat === 'w' ? whiteAdvantage : blackAdvantage}
               isLocalPlayer={role === 'player' && color === bottomSeat}
+              avatar={preferences.avatar}
               isDisconnected={Boolean(
                 opponentDisconnected &&
                   role === 'player' &&
@@ -1343,12 +1328,55 @@ export function App() {
             />
           </div>
 
+          <BoardReplayControls
+            viewedPly={viewedPly}
+            moveCount={moveCount}
+            isViewingHistory={isViewingHistory}
+            viewedMoveLabel={viewedMoveLabel}
+            onPrevious={handlePreviousReplay}
+            onNext={handleNextReplay}
+            onLive={handleLiveReplay}
+            maxWidth={measuredBoard.currentSize}
+          />
+        </section>
+
+        {/* Right Column: Move History & Room Chat (or Slide-over Drawer in Focus Mode) */}
+        <aside
+          ref={drawerRef}
+          role={boardDisplay.focusBoard ? 'dialog' : undefined}
+          aria-modal={boardDisplay.focusBoard && boardDisplay.isFocusDrawerOpen || undefined}
+          inert={boardDisplay.focusBoard && !boardDisplay.isFocusDrawerOpen}
+          className={
+            boardDisplay.focusBoard
+              ? `fixed inset-y-0 right-0 z-40 w-[22rem] max-w-[90vw] bg-slate-950/95 border-l border-slate-800 shadow-2xl p-4 overflow-y-auto space-y-3 transition-transform duration-200 backdrop-blur-md ${
+                  boardDisplay.isFocusDrawerOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none'
+                }`
+              : `space-y-3 lg:max-h-[calc(100dvh-5.5rem)] lg:overflow-y-auto lg:pr-1 ${
+                  isWaitingRoom ? 'order-3 lg:order-none lg:col-start-2 lg:row-start-2' : ''
+                }`
+          }
+          aria-label="Room details, move history and chat"
+        >
+          {boardDisplay.focusBoard && (
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <span className="font-bold text-sm text-slate-200">Room Details & Chat</span>
+              <button
+                type="button"
+                onClick={boardDisplay.closeFocusDrawer}
+                className="text-slate-400 hover:text-white p-1 rounded hover:bg-slate-800 text-sm font-bold"
+                aria-label="Close sidebar drawer"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+          {isWaitingRoom && boardDisplay.focusBoard && (
+            <WaitingPanel roomCode={gameState.roomCode} hostUrl={hostUrl} />
+          )}
+          {!boardDisplay.focusBoard && <BoardDisplayControls display={boardDisplay} measure={measuredBoard} />}
           {/* Action buttons (Takeback, Draw, Resign) */}
           {role === 'player' && gameState.status === 'active' && (
-            <div
-              className="mx-auto w-full mt-3 flex gap-2"
-              style={{ maxWidth: measuredBoard.currentSize ? `${measuredBoard.currentSize}px` : undefined }}
-            >
+            <div className="match-actions" onClick={boardDisplay.closeFocusDrawer}>
               {gameState.allowTakebacks && (
                 <button
                   type="button"
@@ -1386,37 +1414,6 @@ export function App() {
                 Resign Game
               </button>
             </div>
-          )}
-        </section>
-
-        {/* Right Column: Move History & Room Chat (or Slide-over Drawer in Focus Mode) */}
-        <aside
-          className={
-            boardDisplay.focusBoard
-              ? `fixed inset-y-0 right-0 z-40 w-88 max-w-[90vw] bg-slate-950/95 border-l border-slate-800 shadow-2xl p-4 overflow-y-auto space-y-3 transition-transform duration-200 backdrop-blur-md ${
-                  boardDisplay.isFocusDrawerOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none'
-                }`
-              : `space-y-3 lg:max-h-[calc(100dvh-5.5rem)] lg:overflow-y-auto lg:pr-1 ${
-                  isWaitingRoom ? 'order-3 lg:order-none lg:col-start-2 lg:row-start-2' : ''
-                }`
-          }
-          aria-label="Room details, move history and chat"
-        >
-          {boardDisplay.focusBoard && (
-            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-              <span className="font-bold text-sm text-slate-200">Room Details & Chat</span>
-              <button
-                type="button"
-                onClick={boardDisplay.closeFocusDrawer}
-                className="text-slate-400 hover:text-white p-1 rounded hover:bg-slate-800 text-sm font-bold"
-                aria-label="Close sidebar drawer"
-              >
-                ✕
-              </button>
-            </div>
-          )}
-          {isWaitingRoom && (
-            <WaitingPanel roomCode={gameState.roomCode} hostUrl={hostUrl} />
           )}
           <MoveHistory moves={gameState.moves} />
           <ChatPanel
@@ -1460,6 +1457,7 @@ export function App() {
       {/* Pawn Promotion Modal */}
       {pendingPromotion && color && (
         <PromotionModal
+          pieceSet={preferences.pieceSet}
           color={color}
           onSelect={(piece) => executeMove(pendingPromotion.from, pendingPromotion.to, piece)}
           onCancel={() => setPendingPromotion(null)}

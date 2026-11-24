@@ -8,6 +8,7 @@ import {
   DEFAULT_SAFE_BOTTOM_SPACING,
 } from '../services/board-sizing.js';
 import type { BoardSizeMode } from '../services/board-display.js';
+import './board-layout.css';
 
 export interface ResponsiveBoardFrameProps {
   children: React.ReactNode;
@@ -40,6 +41,8 @@ export const ResponsiveBoardFrame: React.FC<ResponsiveBoardFrameProps> = ({
 }) => {
   const frameRef = useRef<HTMLDivElement>(null);
   const [boardSize, setBoardSize] = useState<number | null>(null);
+  const [widthLimit, setWidthLimit] = useState<number | null>(null);
+  const dragStart = useRef<{ id: number; x: number; y: number; size: number } | null>(null);
   const lastReportedRef = useRef<{ currentSize: number; fitSize: number; maxAllowedWidth: number } | null>(null);
 
   const effectiveMaxSize = maxSize ?? (focusBoard ? FOCUS_MAX_BOARD_SIZE : DEFAULT_MAX_BOARD_SIZE);
@@ -52,39 +55,18 @@ export const ResponsiveBoardFrame: React.FC<ResponsiveBoardFrameProps> = ({
 
     // Use window.innerWidth to align with CSS media queries (e.g. Tailwind lg: breakpoint >= 1024px)
     const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-    const containerWidth = parent.clientWidth;
+    const visual = window.visualViewport;
+    const viewportHeight = visual?.scale === 1 ? visual.height : window.innerHeight;
+    const style = window.getComputedStyle(parent);
+    const innerWidth = parent.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0);
+    if (innerWidth <= 0) return;
+    const containerWidth = Math.floor(Math.min(innerWidth, effectiveMaxSize));
 
-    // Measure parent position relative to page top (unscrolled)
-    const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
-    const parentRect = parent.getBoundingClientRect();
-    const parentTopUnscrolled = Math.max(0, parentRect.top + scrollY);
-
-    // Sum sibling heights before and after this frame
-    let topSiblingsHeight = 0;
-    let bottomSiblingsHeight = 0;
-    let foundFrame = false;
-
-    for (let i = 0; i < parent.children.length; i++) {
-      const child = parent.children[i] as HTMLElement;
-      if (child === frame) {
-        foundFrame = true;
-        continue;
-      }
-      const rect = child.getBoundingClientRect();
-      const style = window.getComputedStyle(child);
-      const vMargin = (parseFloat(style.marginTop) || 0) + (parseFloat(style.marginBottom) || 0);
-      const totalH = rect.height + vMargin;
-
-      if (!foundFrame) {
-        topSiblingsHeight += totalH;
-      } else {
-        bottomSiblingsHeight += totalH;
-      }
-    }
-
-    const topOverhead = parentTopUnscrolled + topSiblingsHeight;
-    const bottomOverhead = bottomSiblingsHeight;
+    // Real positions include wrapped toolbars, grid gaps, collapsed margins and notation.
+    const rect = frame.getBoundingClientRect();
+    const topOverhead = Math.max(0, rect.top + window.scrollY);
+    const bottomOverhead = Math.max(0, parent.getBoundingClientRect().bottom - rect.bottom)
+      + Math.max(0, rect.height - rect.width);
 
     const sizeOptions = {
       viewportWidth,
@@ -103,7 +85,11 @@ export const ResponsiveBoardFrame: React.FC<ResponsiveBoardFrameProps> = ({
     const fitSize = calculateFitSize(sizeOptions);
     const newSize = calculateBoardSize(sizeOptions);
 
+    if (parent.style.getPropertyValue('--board-span') !== `${newSize}px`) {
+      parent.style.setProperty('--board-span', `${newSize}px`);
+    }
     setBoardSize((prev) => (prev === newSize ? prev : newSize));
+    setWidthLimit(containerWidth);
 
     const last = lastReportedRef.current;
     if (
@@ -158,6 +144,8 @@ export const ResponsiveBoardFrame: React.FC<ResponsiveBoardFrameProps> = ({
         handleResize();
       });
       resizeObserver.observe(parent);
+      if (frame) resizeObserver.observe(frame);
+      resizeObserver.observe(document.body);
     }
 
     return () => {
@@ -170,54 +158,39 @@ export const ResponsiveBoardFrame: React.FC<ResponsiveBoardFrameProps> = ({
     };
   }, [measureAndResize]);
 
-  // Handle pointer down on the external drag resize handle
+  const maxDragSize = widthLimit ?? effectiveMaxSize;
+  const minDragSize = Math.min(minSize, maxDragSize);
+  const resizeTo = (size: number) =>
+    onResizeCustom?.(Math.min(maxDragSize, Math.max(minDragSize, Math.round(size))));
+
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!onResizeCustom) return;
+    if (e.button !== 0 || !e.isPrimary || !onResizeCustom) return;
     e.preventDefault();
-    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragStart.current = { id: e.pointerId, x: e.clientX, y: e.clientY, size: boardSize ?? 560 };
+  };
 
-    const target = e.currentTarget;
-    target.setPointerCapture(e.pointerId);
-
-    const startX = e.clientX;
-    const startY = e.clientY;
-    const initialSize = boardSize ?? 560;
-
-    const onPointerMove = (moveEvent: PointerEvent) => {
-      moveEvent.preventDefault();
-      moveEvent.stopPropagation();
-      const deltaX = moveEvent.clientX - startX;
-      const deltaY = moveEvent.clientY - startY;
-      const delta = Math.abs(deltaX) > Math.abs(deltaY) ? deltaX : deltaY;
-      const rawSize = initialSize + delta;
-      onResizeCustom(rawSize);
-    };
-
-    const onPointerUp = (upEvent: PointerEvent) => {
-      try {
-        target.releasePointerCapture(upEvent.pointerId);
-      } catch {
-        // Pointer might already have been released
-      }
-      window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerup', onPointerUp);
-      window.removeEventListener('pointercancel', onPointerUp);
-    };
-
-    window.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerup', onPointerUp);
-    window.addEventListener('pointercancel', onPointerUp);
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const start = dragStart.current;
+    if (!start || start.id !== e.pointerId) return;
+    // Centering means the right edge travels half the change in overall width.
+    const dx = (e.clientX - start.x) * 2;
+    const dy = e.clientY - start.y;
+    resizeTo(start.size + (Math.abs(dx) > Math.abs(dy) ? dx : dy));
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (!onResizeCustom) return;
-    const current = customSize ?? boardSize ?? 560;
+    const current = boardSize ?? customSize ?? 560;
     if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
       e.preventDefault();
-      onResizeCustom(current + 16);
+      resizeTo(current + 16);
     } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
       e.preventDefault();
-      onResizeCustom(current - 16);
+      resizeTo(current - 16);
+    } else if (e.key === 'Home' || e.key === 'End') {
+      e.preventDefault();
+      resizeTo(e.key === 'Home' ? minDragSize : maxDragSize);
     }
   };
 
@@ -243,11 +216,13 @@ export const ResponsiveBoardFrame: React.FC<ResponsiveBoardFrameProps> = ({
             className="board-resize-handle absolute -bottom-3 -right-3 z-20 flex items-center justify-center w-6 h-6 rounded-md bg-slate-900/90 border border-slate-700 hover:border-amber-400 text-slate-400 hover:text-amber-300 active:text-amber-200 cursor-se-resize touch-none select-none transition-colors shadow-sm"
             role="slider"
             aria-label="Drag to resize chessboard"
-            aria-valuemin={minSize}
-            aria-valuemax={effectiveMaxSize}
-            aria-valuenow={boardSize ?? 560}
+            aria-valuemin={minDragSize}
+            aria-valuemax={maxDragSize}
+            aria-valuenow={boardSize ?? customSize ?? 560}
             tabIndex={0}
             onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onLostPointerCapture={() => { dragStart.current = null; }}
             onKeyDown={handleKeyDown}
             title="Drag to resize chessboard"
           >

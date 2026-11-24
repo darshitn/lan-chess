@@ -82,11 +82,7 @@ export function calculateFitSize(options: BoardSizeOptions): number {
   targetSize = Math.max(targetSize, minBoardSize);
 
   // Never exceed available width to avoid horizontal scrollbars
-  if (availableWidth > 0 && availableWidth < targetSize) {
-    targetSize = availableWidth;
-  }
-
-  return Math.floor(targetSize);
+  return Math.floor(Math.min(availableWidth, maxBoardSize, targetSize));
 }
 
 export function calculateBoardSize(options: BoardSizeOptions): number {
@@ -100,13 +96,9 @@ export function calculateBoardSize(options: BoardSizeOptions): number {
   const availableWidth = Math.max(0, containerWidth);
   const fitSize = calculateFitSize(options);
 
-  if (sizeMode === 'custom' && typeof customSize === 'number' && !Number.isNaN(customSize)) {
-    // Custom size is bounded by minBoardSize and availableWidth to strictly prevent horizontal overflow
-    let target = Math.max(minBoardSize, customSize);
-    if (availableWidth > 0 && availableWidth < target) {
-      target = availableWidth;
-    }
-    return Math.floor(target);
+  if (sizeMode === 'custom' && typeof customSize === 'number' && Number.isFinite(customSize)) {
+    const limit = options.maxBoardSize ?? (options.focusBoard ? FOCUS_MAX_BOARD_SIZE : DEFAULT_MAX_BOARD_SIZE);
+    return Math.floor(Math.min(availableWidth, limit, Math.max(minBoardSize, customSize)));
   }
 
   return fitSize;

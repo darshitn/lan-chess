@@ -1,4 +1,8 @@
 import React, { useState, useRef } from 'react';
+import { BUILTIN_BOARD_THEMES } from '../services/preferences.js';
+import type { BoardTheme, PieceSetId } from '../types/preferences.js';
+import { LobbyBoard } from './LobbyBoard.js';
+import './club.css';
 import type { TimeControl } from '../../shared/types.js';
 import { formatTimeControl, TIME_CONTROL_GROUPS } from '../utils/chess-helpers.js';
 import {
@@ -76,6 +80,8 @@ export interface LobbyProps {
   error: string | null;
   isConnecting: boolean;
   initialMode?: LobbyMode;
+  boardTheme?: BoardTheme;
+  pieceSet?: PieceSetId;
 }
 
 export function getStoredLobbyMode(): LobbyMode {
@@ -109,6 +115,9 @@ export const Lobby: React.FC<LobbyProps> = ({
   error,
   isConnecting,
   initialMode,
+  boardTheme = BUILTIN_BOARD_THEMES[0],
+  pieceSet = 'classic',
+  onOpenSettings,
 }) => {
   // Remember last selected mode in localStorage, default to 'create' on first visit
   const [selectedMode, setSelectedMode] = useState<LobbyMode>(() => initialMode ?? getStoredLobbyMode());
@@ -168,184 +177,40 @@ export const Lobby: React.FC<LobbyProps> = ({
   const trimmedCode = roomCode.trim();
 
   return (
-    <main className="mx-auto max-w-3xl py-5 sm:py-8">
-      {/* Top Identity & Context Header */}
-      <header className="mb-5 text-center">
-        <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
-          Play Chess Together
-        </h1>
-        <p className="mt-1 text-xs sm:text-sm text-slate-300 sm:text-slate-400">
-          Play with friends over your local Wi-Fi or practice offline against the computer.
-        </p>
+    <main className="club-lobby">
+      <div className="lobby-spread">
+      <div className="lobby-entry">
+      <header className="scorebook-heading">
+        <h1>Chess across <em>the table.</em></h1>
+        <p>Host a match on your Wi-Fi, or join a friend with a room code.</p>
 
-        {hostUrl && (
-          <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900/80 px-3.5 py-1 text-xs text-slate-300">
-            <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" aria-hidden="true" />
-            <span className="text-slate-400">Host LAN Address:</span>
-            <span className="font-mono font-semibold text-amber-300">{hostUrl}</span>
-          </div>
-        )}
       </header>
+      {error && <p role="alert" className="club-error">{error}</p>}
 
-      {/* Global Error Banner */}
-      {error && (
-        <div
-          role="alert"
-          className="mb-5 rounded-xl border border-rose-500/40 bg-rose-950/60 px-4 py-3 text-sm text-rose-200 shadow-sm"
-        >
-          <div className="flex items-center gap-2 font-semibold">
-            <span>Notice</span>
+
+        <section aria-label="Game setup" className="lobby-setup">
+          <div role="tablist" aria-orientation="horizontal" aria-label="Game mode selection" className="lobby-tabs">
+            {MODES.map((mode) => {
+              const Icon = mode === 'create' ? IconBroadcast : mode === 'join' ? IconLink : IconCpu;
+              const label = mode === 'create' ? 'Create room' : mode === 'join' ? 'Join room' : 'Computer';
+              return (
+                <button key={mode} type="button" role="tab" id={`tab-${mode}`} aria-controls={`panel-${mode}`}
+                  aria-selected={selectedMode === mode} tabIndex={selectedMode === mode ? 0 : -1}
+                  ref={(el) => { tabRefs.current[mode] = el; }}
+                  onClick={() => {
+                    handleSelectMode(mode);
+                    if (mode === 'join') requestAnimationFrame(() => document.getElementById('room-code-input')?.focus());
+                  }} onKeyDown={(event) => handleTabKeyDown(event, mode)}>
+                  <Icon /><span>{label}</span>
+                </button>
+              );
+            })}
           </div>
-          <p className="mt-1 text-xs text-rose-300">{error}</p>
-        </div>
-      )}
-
-      {/* Compact Player Name Strip */}
-      <section
-        aria-label="Player profile"
-        className="mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 rounded-xl border border-slate-800 bg-slate-900/80 p-3 sm:px-4"
-      >
-        <div className="flex items-center gap-2">
-          <label
-            htmlFor="player-name-input"
-            className="text-xs font-bold uppercase tracking-wider text-slate-400"
-          >
-            Your Name
-          </label>
-          <span className="text-xs text-slate-600 hidden sm:inline" aria-hidden="true">·</span>
-          <span className="text-xs text-slate-400 hidden sm:inline">
-            Used across all modes
-          </span>
-        </div>
-        <div className="w-full sm:w-64">
-          <input
-            id="player-name-input"
-            type="text"
-            className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-1.5 text-xs font-medium text-white placeholder-slate-500 focus:border-amber-400 focus:outline-none transition-colors"
-            placeholder="Enter display name"
-            value={playerName}
-            onChange={(e) => onNameChange(e.target.value)}
-            maxLength={24}
-            disabled={isConnecting}
-          />
-        </div>
-      </section>
-
-      {/* Three Mode Selectors with accessible WAI-ARIA tablist & arrow navigation */}
-      <div
-        role="tablist"
-        aria-orientation="horizontal"
-        aria-label="Game mode selection"
-        className="grid grid-cols-1 gap-2.5 sm:grid-cols-3 mb-5"
-      >
-        {/* Mode 1: Create a LAN game */}
-        <button
-          type="button"
-          role="tab"
-          id="tab-create"
-          ref={(el) => { tabRefs.current.create = el; }}
-          tabIndex={selectedMode === 'create' ? 0 : -1}
-          aria-selected={selectedMode === 'create'}
-          aria-controls="panel-create"
-          onClick={() => handleSelectMode('create')}
-          onKeyDown={(e) => handleTabKeyDown(e, 'create')}
-          className={`flex flex-col text-left rounded-xl border p-3.5 transition-all focus-visible:outline-none ${
-            selectedMode === 'create'
-              ? 'border-amber-400 bg-amber-400/10 shadow-sm text-white'
-              : 'border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700 hover:bg-slate-900/90'
-          }`}
-        >
-          <div className="flex items-center justify-between w-full">
-            <span
-              className={`flex h-7 w-7 items-center justify-center rounded-lg border transition-colors ${
-                selectedMode === 'create'
-                  ? 'border-amber-400/40 bg-amber-400/20 text-amber-300'
-                  : 'border-slate-700/60 bg-slate-800/80 text-slate-300'
-              }`}
-            >
-              <IconBroadcast className="h-4 w-4" />
-            </span>
-            {selectedMode === 'create' && (
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-400" aria-hidden="true" />
-            )}
-          </div>
-          <span className="mt-2 text-sm font-bold text-white">Create a LAN game</span>
-          <span className="mt-0.5 text-xs text-slate-400">Host a match on your network</span>
-        </button>
-
-        {/* Mode 2: Join a LAN game */}
-        <button
-          type="button"
-          role="tab"
-          id="tab-join"
-          ref={(el) => { tabRefs.current.join = el; }}
-          tabIndex={selectedMode === 'join' ? 0 : -1}
-          aria-selected={selectedMode === 'join'}
-          aria-controls="panel-join"
-          onClick={() => handleSelectMode('join')}
-          onKeyDown={(e) => handleTabKeyDown(e, 'join')}
-          className={`flex flex-col text-left rounded-xl border p-3.5 transition-all focus-visible:outline-none ${
-            selectedMode === 'join'
-              ? 'border-amber-400 bg-amber-400/10 shadow-sm text-white'
-              : 'border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700 hover:bg-slate-900/90'
-          }`}
-        >
-          <div className="flex items-center justify-between w-full">
-            <span
-              className={`flex h-7 w-7 items-center justify-center rounded-lg border transition-colors ${
-                selectedMode === 'join'
-                  ? 'border-amber-400/40 bg-amber-400/20 text-amber-300'
-                  : 'border-slate-700/60 bg-slate-800/80 text-slate-300'
-              }`}
-            >
-              <IconLink className="h-4 w-4" />
-            </span>
-            {selectedMode === 'join' && (
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-400" aria-hidden="true" />
-            )}
-          </div>
-          <span className="mt-2 text-sm font-bold text-white">Join a LAN game</span>
-          <span className="mt-0.5 text-xs text-slate-400">Connect to a host's room code</span>
-        </button>
-
-        {/* Mode 3: Play computer */}
-        <button
-          type="button"
-          role="tab"
-          id="tab-computer"
-          ref={(el) => { tabRefs.current.computer = el; }}
-          tabIndex={selectedMode === 'computer' ? 0 : -1}
-          aria-selected={selectedMode === 'computer'}
-          aria-controls="panel-computer"
-          onClick={() => handleSelectMode('computer')}
-          onKeyDown={(e) => handleTabKeyDown(e, 'computer')}
-          className={`flex flex-col text-left rounded-xl border p-3.5 transition-all focus-visible:outline-none ${
-            selectedMode === 'computer'
-              ? 'border-amber-400 bg-amber-400/10 shadow-sm text-white'
-              : 'border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700 hover:bg-slate-900/90'
-          }`}
-        >
-          <div className="flex items-center justify-between w-full">
-            <span
-              className={`flex h-7 w-7 items-center justify-center rounded-lg border transition-colors ${
-                selectedMode === 'computer'
-                  ? 'border-amber-400/40 bg-amber-400/20 text-amber-300'
-                  : 'border-slate-700/60 bg-slate-800/80 text-slate-300'
-              }`}
-            >
-              <IconCpu className="h-4 w-4" />
-            </span>
-            {selectedMode === 'computer' && (
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-400" aria-hidden="true" />
-            )}
-          </div>
-          <span className="mt-2 text-sm font-bold text-white">Play computer</span>
-          <span className="mt-0.5 text-xs text-slate-400">Offline practice with Stockfish</span>
-        </button>
-      </div>
-
-      {/* Setup Panels: All panels stay mounted so aria-controls remains valid and form state is preserved */}
-      <div className="panel border-slate-800/80 bg-slate-900/80 shadow-md">
+          <div className="lobby-form">
+            <label className="lobby-name" htmlFor="player-name-input">Your name
+              <input id="player-name-input" className="field" type="text" autoComplete="nickname" placeholder="Enter display name"
+                value={playerName} onChange={(e) => onNameChange(e.target.value)} maxLength={24} disabled={isConnecting} />
+            </label>
         {/* PANEL 1: Create a LAN game */}
         <div
           id="panel-create"
@@ -356,9 +221,9 @@ export const Lobby: React.FC<LobbyProps> = ({
           className={`space-y-5 focus:outline-none ${selectedMode !== 'create' ? 'hidden' : ''}`}
         >
             <div>
-              <h2 className="text-base font-bold text-white">Create LAN Match</h2>
+              <h2 className="text-base font-bold text-white">Host a match</h2>
               <p className="mt-0.5 text-xs text-slate-400">
-                Choose a time control to host a room for another device on this network.
+                Choose a clock and invite a friend on the same Wi-Fi.
               </p>
             </div>
 
@@ -370,6 +235,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                 </span>
                 <button
                   type="button"
+                  aria-expanded={showAllTimeControls}
                   onClick={() => setShowAllTimeControls(!showAllTimeControls)}
                   className="text-xs font-medium text-amber-400 hover:text-amber-300 transition-colors"
                 >
@@ -400,7 +266,7 @@ export const Lobby: React.FC<LobbyProps> = ({
 
               {/* Common Time Controls (Default View) */}
               {!showAllTimeControls && (
-                <div className="mt-2.5 grid grid-cols-3 gap-2 sm:grid-cols-6">
+                <div className="mt-2.5 grid grid-cols-3 gap-2 ">
                   {COMMON_TIME_CONTROLS.map((tc) => (
                     <TimeControlButton
                       key={tc}
@@ -420,7 +286,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                   {TIME_CONTROL_GROUPS.map((group) => (
                     <div key={group.category}>
                       <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                        {group.icon} {group.category}
+                        {group.category}
                       </span>
                       <div className="mt-1 grid grid-cols-3 gap-2">
                         {group.controls.map((tc) => (
@@ -462,7 +328,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                     type="checkbox"
                     checked={allowTakebacks}
                     onChange={(e) => onAllowTakebacksChange(e.target.checked)}
-                    className="h-4 w-4 rounded accent-amber-400 cursor-pointer"
+                    className="h-4 w-4 rounded accent-[var(--accent-color)] cursor-pointer"
                   />
                 </label>
               </div>
@@ -489,17 +355,9 @@ export const Lobby: React.FC<LobbyProps> = ({
           className={`space-y-5 focus:outline-none ${selectedMode !== 'join' ? 'hidden' : ''}`}
         >
             <div>
-              <h2 className="text-base font-bold text-white">Join LAN Match</h2>
+              <h2 className="text-base font-bold text-white">Join a match</h2>
               <p className="mt-0.5 text-xs text-slate-400">
-                Connect to a game hosted on your local network.
-              </p>
-            </div>
-
-            {/* Guidance on LAN connection */}
-            <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-300">
-              <p className="font-semibold text-amber-300/90">How to connect:</p>
-              <p className="mt-1 text-slate-400 leading-relaxed">
-                Make sure your device is connected to the same local Wi-Fi or Ethernet network as the host. First open the host’s shared LAN address in your browser, then enter the room code below.
+                Use the code from your opponent to play or watch.
               </p>
             </div>
 
@@ -554,7 +412,7 @@ export const Lobby: React.FC<LobbyProps> = ({
           className={`space-y-5 focus:outline-none ${selectedMode !== 'computer' ? 'hidden' : ''}`}
         >
             <div>
-              <h2 className="text-base font-bold text-white">Play vs Computer</h2>
+              <h2 className="text-base font-bold text-white">Play Stockfish</h2>
               <p className="mt-0.5 text-xs text-slate-400">
                 Play an offline game against the Stockfish chess engine.
               </p>
@@ -568,6 +426,7 @@ export const Lobby: React.FC<LobbyProps> = ({
               <div className="mt-1.5 grid grid-cols-3 gap-2">
                 <button
                   type="button"
+                  aria-pressed={computerColor === 'w'}
                   onClick={() => setComputerColor('w')}
                   className={`flex items-center justify-center gap-2 rounded-lg border p-2 text-xs font-semibold transition-all ${
                     computerColor === 'w'
@@ -581,6 +440,7 @@ export const Lobby: React.FC<LobbyProps> = ({
 
                 <button
                   type="button"
+                  aria-pressed={computerColor === 'random'}
                   onClick={() => setComputerColor('random')}
                   className={`flex items-center justify-center gap-2 rounded-lg border p-2 text-xs font-semibold transition-all ${
                     computerColor === 'random'
@@ -594,6 +454,7 @@ export const Lobby: React.FC<LobbyProps> = ({
 
                 <button
                   type="button"
+                  aria-pressed={computerColor === 'b'}
                   onClick={() => setComputerColor('b')}
                   className={`flex items-center justify-center gap-2 rounded-lg border p-2 text-xs font-semibold transition-all ${
                     computerColor === 'b'
@@ -612,7 +473,7 @@ export const Lobby: React.FC<LobbyProps> = ({
               <span className="block text-xs font-bold uppercase tracking-wider text-slate-400">
                 Difficulty
               </span>
-              <div className="mt-1.5 grid grid-cols-2 gap-2 sm:grid-cols-5">
+              <div className="mt-1.5 grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {(['beginner', 'easy', 'medium', 'hard', 'expert'] as ComputerDifficulty[]).map((d) => {
                   const label = DIFFICULTY_LABELS[d];
                   const selected = computerDifficulty === d;
@@ -620,6 +481,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                     <button
                       key={d}
                       type="button"
+                      aria-pressed={selected}
                       onClick={() => setComputerDifficulty(d)}
                       className={`rounded-lg border p-2.5 text-left transition-all ${
                         selected
@@ -662,11 +524,12 @@ export const Lobby: React.FC<LobbyProps> = ({
               <span className="block text-xs font-bold uppercase tracking-wider text-slate-400">
                 Time Control
               </span>
-              <div className="mt-1.5 grid grid-cols-3 gap-2 sm:grid-cols-6">
+              <div className="mt-1.5 grid grid-cols-3 gap-2 ">
                 {(['unlimited', '1+0', '3+2', '5+0', '10+0', '15+10'] as TimeControl[]).map((tc) => (
                   <button
                     key={tc}
                     type="button"
+                    aria-pressed={computerTimeControl === tc}
                     onClick={() => setComputerTimeControl(tc)}
                     className={`rounded-lg border p-2 text-center text-xs font-semibold transition-all ${
                       computerTimeControl === tc
@@ -696,6 +559,11 @@ export const Lobby: React.FC<LobbyProps> = ({
               <span>Start Match vs Computer</span>
             </button>
         </div>
+          </div>
+        </section>
+        {hostUrl && <div className="club-host"><IconBroadcast /><span>Local host</span><code>{hostUrl}</code></div>}
+      </div>
+      <LobbyBoard theme={boardTheme} pieceSet={pieceSet} flipped={selectedMode === 'computer' && computerColor === 'b'} onCustomize={onOpenSettings} />
       </div>
     </main>
   );
@@ -721,7 +589,7 @@ const TimeControlButton: React.FC<TimeControlButtonProps> = ({
     aria-pressed={selected}
     onClick={() => onSelect(value)}
     disabled={disabled}
-    className={`rounded-lg border p-2 text-center text-xs font-semibold transition-all ${
+    className={`lobby-clock rounded-lg border p-2 text-center text-xs font-semibold transition-all ${
       selected
         ? 'border-emerald-400 bg-emerald-400/10 text-emerald-300 font-bold shadow-sm'
         : 'border-slate-700 bg-slate-800/60 text-slate-300 hover:border-slate-600'

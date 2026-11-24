@@ -34,7 +34,6 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       aria-label={title}
     >
       <div ref={modalRef} tabIndex={-1} className="promotion-dialog focus:outline-none">
-        <p className="text-xs font-bold uppercase tracking-[.25em] text-amber-400">Confirm</p>
         <h2 className="mt-1 text-xl font-black text-white">{title}</h2>
         <p className="mt-2 text-sm text-slate-300">{message}</p>
         <div className="mt-5 flex gap-2 border-t border-slate-700/60 pt-4">
@@ -50,7 +49,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             onClick={onConfirm}
             className={`action-button flex-1 text-sm font-bold ${
               danger
-                ? 'bg-rose-600 text-white hover:bg-rose-500'
+                ? 'action-danger'
                 : 'action-primary'
             }`}
           >

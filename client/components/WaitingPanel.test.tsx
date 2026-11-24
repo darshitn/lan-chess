@@ -56,7 +56,7 @@ describe('WaitingPanel component', () => {
     const image = container.querySelector<HTMLImageElement>('[data-testid="room-invite-qr"]');
     expect(image?.src).toMatch(/^data:image\/png;base64,/);
     expect(image?.alt).toContain('UY3J');
-    expect(container.querySelector('summary')?.textContent).toContain('Scan QR to join');
+    expect(image?.closest('details')).toBeNull();
     act(() => root.unmount());
     container.remove();
   });

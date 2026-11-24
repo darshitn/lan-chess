@@ -77,7 +77,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = React.memo(({
         <div className="flex gap-2">
           <input
             type="text"
-            className="field flex-1 text-sm"
+            className="field flex-1 text-sm" aria-label="Chat message"
             placeholder={disabled ? 'Chat disabled' : 'Type a message...'}
             value={input}
             onChange={(e) => setInput(e.target.value)}

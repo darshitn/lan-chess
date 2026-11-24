@@ -1,31 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import type {
-  BoardTheme,
-  HighlightStyleId,
-  PieceSetId,
-  UiThemeId,
-  UserPreferences,
-} from '../../types/preferences.js';
-import {
-  BUILTIN_BOARD_THEMES,
-  ONE_CLICK_PRESETS,
-  applyUiThemeToDom,
-  resetAppearancePreferences,
-} from '../../services/preferences.js';
-import { ChessPiece } from '../chess/ChessPiece.js';
-import { invalidateSoundVolumeCache } from '../../utils/sound.js';
+﻿import React, { useEffect, useState } from 'react';
+import type { BoardTheme, UserPreferences } from '../../types/preferences.js';
+import { applyUiThemeToDom } from '../../services/preferences.js';
 import { useModalBehavior } from '../../utils/modal-behavior.js';
+import { invalidateSoundVolumeCache, playMoveSound } from '../../utils/sound.js';
 import { CustomBoardBuilder } from '../themes/CustomBoardBuilder.js';
-import type { UpdateStatusPayload } from '../../../shared/types.js';
-import {
-  isDesktopApp,
-  getDesktopUpdateStatus,
-  checkForDesktopUpdates,
-  quitAndInstallDesktopUpdate,
-  subscribeToUpdateStatus,
-  formatBytes,
-  formatSpeed,
-} from '../../services/desktop-updater.js';
+import { AppearanceSettings } from './AppearanceSettings.js';
+import { UpdateSettings } from './UpdateSettings.js';
+import './settings.css';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -39,839 +20,82 @@ interface SettingsModalProps {
   isGameActive?: boolean;
 }
 
-const MiniBoardPreview: React.FC<{ theme: BoardTheme; pieceSet?: PieceSetId }> = ({ theme, pieceSet }) => (
-  <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-md border border-slate-700/80 shadow-inner grid grid-cols-2 grid-rows-2">
-    <div className="flex items-center justify-center p-0.5" style={{ backgroundColor: theme.lightSquare }}>
-      <ChessPiece type="n" color="w" pieceSet={pieceSet} className="w-full h-full" />
-    </div>
-    <div className="flex items-center justify-center p-0.5" style={{ backgroundColor: theme.darkSquare }}>
-      <ChessPiece type="p" color="b" pieceSet={pieceSet} className="w-full h-full" />
-    </div>
-    <div className="flex items-center justify-center p-0.5" style={{ backgroundColor: theme.darkSquare }}>
-      <ChessPiece type="r" color="w" pieceSet={pieceSet} className="w-full h-full" />
-    </div>
-    <div className="flex items-center justify-center p-0.5" style={{ backgroundColor: theme.lightSquare }}>
-      <ChessPiece type="k" color="b" pieceSet={pieceSet} className="w-full h-full" />
-    </div>
-  </div>
-);
+const sections = {
+  appearance: 'Appearance', builder: 'Custom board', sound: 'Sound',
+  gameplay: 'Gameplay', analysis: 'Analysis', updates: 'Updates',
+} as const;
+type Section = keyof typeof sections;
+const sectionIds = Object.keys(sections) as Section[];
+const avatars = [['♟','Pawn'],['♞','Knight'],['♝','Bishop'],['♜','Rook'],['♛','Queen'],['♚','King']];
 
-const PIECE_SETS: Array<{ id: PieceSetId; name: string }> = [
-  { id: 'classic', name: 'Classic Staunton' },
-  { id: 'modern', name: 'Modern' },
-  { id: 'minimal', name: 'Minimal' },
-  { id: 'glass', name: 'Glass' },
-  { id: 'wood', name: 'Wood' },
-  { id: 'neon', name: 'Neon' },
-  { id: 'cyber', name: 'Cyber' },
-  { id: 'silhouette', name: 'Silhouette' },
-];
-
-const HIGHLIGHT_STYLES: Array<{ id: HighlightStyleId; name: string; desc: string }> = [
-  { id: 'classic', name: 'Classic', desc: 'Standard gold border & soft dot' },
-  { id: 'soft', name: 'Soft', desc: 'Subtle translucent amber glow' },
-  { id: 'bright', name: 'Bright', desc: 'Vivid high-contrast highlighting' },
-  { id: 'minimal', name: 'Minimal', desc: 'Clean razor-thin white border' },
-  { id: 'neon', name: 'Neon', desc: 'Vibrant cyan synthwave glow' },
-];
-
-const UI_THEMES: Array<{ id: UiThemeId; name: string; bg: string }> = [
-  { id: 'slate', name: 'Slate (Charcoal & Teal)', bg: '#0b0f19' },
-  { id: 'ivory', name: 'Ivory (Warm Cream & Ink)', bg: '#f6f3eb' },
-  { id: 'walnut', name: 'Walnut (Warm Wood & Copper)', bg: '#14110f' },
-  { id: 'dark', name: 'Dark Slate & Amber', bg: '#020617' },
-  { id: 'light', name: 'Clean Light', bg: '#f1f5f9' },
-  { id: 'midnight', name: 'Midnight Blue', bg: '#090d16' },
-  { id: 'oled', name: 'OLED Black', bg: '#000000' },
-  { id: 'glass', name: 'Frosted Glass', bg: '#111827' },
-  { id: 'cyber', name: 'Cyber Neon', bg: '#0a0a14' },
-];
-
-const AVATARS = ['♟', '♞', '♝', '♜', '♛', '♚', '⚡', '🛡️', '⚔️', '🦅'];
-
-export const SettingsModal: React.FC<SettingsModalProps> = ({
-  isOpen,
-  onClose,
-  initialTab = 'appearance',
-  preferences,
-  customThemes,
-  onUpdatePreferences,
-  onSaveCustomTheme,
-  onDeleteCustomTheme,
-  isGameActive = false,
-}) => {
-  const [activeTab, setActiveTab] = useState<'appearance' | 'builder' | 'sound' | 'gameplay' | 'analysis' | 'updates'>(initialTab);
-  const [updateStatus, setUpdateStatus] = useState<UpdateStatusPayload | null>(null);
-  const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
-  const [updateError, setUpdateError] = useState<string | null>(null);
-  const [appVersion, setAppVersion] = useState<string>('1.2.0');
+export function SettingsModal({ isOpen, onClose, initialTab='appearance', preferences, customThemes,
+  onUpdatePreferences, onSaveCustomTheme, onDeleteCustomTheme, isGameActive=false }: SettingsModalProps) {
+  const [section, setSection] = useState<Section>(initialTab);
   const modalRef = useModalBehavior(onClose, true, isOpen);
-
-  useEffect(() => {
-    if (isOpen) setActiveTab(initialTab);
-  }, [isOpen, initialTab]);
-
+  useEffect(() => { if (isOpen) setSection(initialTab); }, [initialTab, isOpen]);
   useEffect(() => {
     if (!isOpen) return;
-    void getDesktopUpdateStatus().then(setUpdateStatus);
-    if (typeof window !== 'undefined' && window.desktop?.getStatus) {
-      window.desktop.getStatus().then((s) => {
-        if (s?.version) setAppVersion(s.version);
-      }).catch(() => {});
-    }
-    const unsub = subscribeToUpdateStatus((s) => {
-      setUpdateStatus(s);
-      if (s.status !== 'checking') setIsCheckingUpdates(false);
-    });
-    return unsub;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previous; };
   }, [isOpen]);
-
-  const handleCheckUpdates = async () => {
-    setIsCheckingUpdates(true);
-    setUpdateError(null);
-    const res = await checkForDesktopUpdates();
-    setIsCheckingUpdates(false);
-    if (!res.success && res.error) {
-      setUpdateError(res.error);
-    }
-  };
-
-  const handleRestartToUpdate = async () => {
-    if (isGameActive) {
-      setUpdateError('Cannot restart while a chess game is active. Please complete or leave your game first.');
-      return;
-    }
-    setUpdateError(null);
-    const res = await quitAndInstallDesktopUpdate();
-    if (!res.success && res.message) {
-      setUpdateError(res.message);
-    }
-  };
-
   if (!isOpen) return null;
-
-  const handleApplyPreset = (presetId: string) => {
-    const preset = ONE_CLICK_PRESETS.find((p) => p.id === presetId);
-    if (!preset) return;
-
-    const updated: UserPreferences = {
-      ...preferences,
-      activeThemeId: preset.themeId,
-      pieceSet: preset.pieceSet,
-      highlightStyle: preset.highlightStyle,
-      uiTheme: preset.uiTheme,
-    };
-    onUpdatePreferences(updated);
-    applyUiThemeToDom(preset.uiTheme);
+  const update = (next: UserPreferences) => {
+    if (next.uiTheme !== preferences.uiTheme) applyUiThemeToDom(next.uiTheme);
+    if (next.sound.volume !== preferences.sound.volume) invalidateSoundVolumeCache();
+    onUpdatePreferences(next);
   };
-
-  const handleSelectTheme = (theme: BoardTheme) => {
-    onUpdatePreferences({ ...preferences, activeThemeId: theme.id });
-  };
-
-  const handleResetAppearance = () => {
-    const updated = resetAppearancePreferences(preferences);
-    onUpdatePreferences(updated);
-    applyUiThemeToDom(updated.uiTheme);
-  };
-
-  const handleUiThemeChange = (themeId: UiThemeId) => {
-    onUpdatePreferences({ ...preferences, uiTheme: themeId });
-    applyUiThemeToDom(themeId);
-  };
-
-  const activePreset = ONE_CLICK_PRESETS.find(
-    (p) =>
-      p.themeId === preferences.activeThemeId &&
-      p.pieceSet === preferences.pieceSet &&
-      p.highlightStyle === preferences.highlightStyle &&
-      p.uiTheme === preferences.uiTheme
-  );
-
-  const recommendedPresets = ONE_CLICK_PRESETS.filter((p) =>
-    ['preset-slate', 'preset-ivory', 'preset-walnut'].includes(p.id)
-  );
-  const otherPresets = ONE_CLICK_PRESETS.filter(
-    (p) => !['preset-slate', 'preset-ivory', 'preset-walnut'].includes(p.id)
-  );
-
-  return (
-    <div
-      className="promotion-backdrop z-50 p-2 sm:p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Settings"
-      onClick={onClose}
-    >
-      <div
-        ref={modalRef}
-        tabIndex={-1}
-        className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl focus:outline-none"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-800 px-6 py-4">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[.25em] text-amber-400">Customization & Options</p>
-            <h2 className="text-xl font-black text-white">Settings</h2>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close settings"
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"
-          >
-            ✕
-          </button>
-        </div>
-
-        {/* Tab Navigation */}
-        <div className="flex border-b border-slate-800 bg-slate-950/40 px-6">
-          {[
-            { id: 'appearance', label: '🎨 Appearance' },
-            { id: 'builder', label: '🛠️ Custom Board' },
-            { id: 'sound', label: '🔊 Sound' },
-            { id: 'gameplay', label: '⚙️ Gameplay' },
-            { id: 'analysis', label: '🔍 Analysis' },
-            { id: 'updates', label: '🚀 Updates' },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id as typeof activeTab)}
-              className={`border-b-2 px-3.5 py-3 text-xs font-bold transition-all sm:text-sm ${
-                activeTab === tab.id
-                  ? 'border-amber-400 text-amber-400'
-                  : 'border-transparent text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Tab Content */}
-        <div className="flex-1 overflow-y-auto p-6 text-slate-200">
-          {/* APPEARANCE TAB */}
-          {activeTab === 'appearance' && (
-            <div className="space-y-8">
-              {/* Presets Status & Reset Bar */}
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3.5">
-                <div>
-                  <span className="text-xs font-semibold text-slate-400">Current Appearance:</span>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    {activePreset ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-teal-500/15 px-2.5 py-0.5 text-xs font-bold text-teal-400 border border-teal-500/30">
-                        <span className="h-1.5 w-1.5 rounded-full bg-teal-400" />
-                        {activePreset.name} Preset
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-bold text-amber-400 border border-amber-500/30">
-                        <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                        Customized Configuration
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleResetAppearance}
-                  className="action-button action-secondary px-3 py-1.5 text-xs text-slate-300 hover:text-white"
-                  title="Reset appearance to recommended Slate defaults (preserves player name, sounds, and stats)"
-                >
-                  ↺ Reset Appearance
-                </button>
-              </div>
-
-              {/* Recommended Presets */}
-              <section>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-sm font-bold uppercase tracking-wider text-amber-400">Recommended Presets</h3>
-                    <p className="mt-0.5 text-xs text-slate-400">Cohesive, tournament-tested visual identities with Staunton SVG pieces.</p>
-                  </div>
-                </div>
-                <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                  {recommendedPresets.map((p) => {
-                    const isSelected = activePreset?.id === p.id;
-                    const presetTheme = BUILTIN_BOARD_THEMES.find((t) => t.id === p.themeId);
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => handleApplyPreset(p.id)}
-                        className={`flex flex-col justify-between rounded-xl border p-3.5 text-left transition-all ${
-                          isSelected
-                            ? 'border-teal-400 bg-teal-500/10 shadow-lg shadow-teal-500/10 ring-1 ring-teal-400'
-                            : 'border-slate-800 bg-slate-950/60 hover:border-slate-700 hover:bg-slate-800/80'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <span className="font-bold text-white text-sm">{p.name}</span>
-                            {isSelected && (
-                              <span className="ml-1.5 text-[10px] uppercase font-bold text-teal-400 bg-teal-950/80 px-1.5 py-0.5 rounded border border-teal-500/30">Active</span>
-                            )}
-                          </div>
-                          {presetTheme && <MiniBoardPreview theme={presetTheme} pieceSet={p.pieceSet} />}
-                        </div>
-                        <p className="mt-2 text-[11px] text-slate-400 leading-snug">{p.description}</p>
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-
-              {/* Classic & Creative Presets */}
-              <section>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Other One-Click Presets</h3>
-                <div className="mt-2.5 grid gap-2 sm:grid-cols-3">
-                  {otherPresets.map((p) => {
-                    const isSelected = activePreset?.id === p.id;
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => handleApplyPreset(p.id)}
-                        className={`rounded-xl border p-2.5 text-left transition-all ${
-                          isSelected
-                            ? 'border-amber-400 bg-amber-400/10'
-                            : 'border-slate-800 bg-slate-950/60 hover:border-slate-700 hover:bg-slate-800/80'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-white text-xs">{p.name}</span>
-                          {isSelected && <span className="text-[10px] font-bold text-amber-400">Active</span>}
-                        </div>
-                        <p className="mt-0.5 text-[10px] text-slate-400 leading-tight">{p.description}</p>
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-
-              {/* ADVANCED CUSTOMIZATION SECTION */}
-              <div className="border-t border-slate-800/80 pt-6 space-y-7">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-black uppercase tracking-widest text-slate-400">Advanced Customization</span>
-                  <div className="h-px flex-1 bg-slate-800" />
-                </div>
-
-                {/* Board Themes */}
-                <section>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400">Board Themes</h4>
-                      <p className="text-[11px] text-slate-400">Select any tournament, wood, or stylized board.</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('builder')}
-                      className="text-xs font-semibold text-amber-300 hover:underline"
-                    >
-                      + Create Custom Board
-                    </button>
-                  </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4">
-                    {BUILTIN_BOARD_THEMES.map((theme) => {
-                      const isSelected = preferences.activeThemeId === theme.id;
-                      return (
-                        <button
-                          key={theme.id}
-                          type="button"
-                          onClick={() => handleSelectTheme(theme)}
-                          className={`flex items-center gap-2.5 rounded-xl border p-2 text-left transition-all ${
-                            isSelected
-                              ? 'border-amber-400 bg-amber-400/10 shadow-md shadow-amber-500/10 ring-1 ring-amber-400/80'
-                              : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
-                          }`}
-                        >
-                          <MiniBoardPreview theme={theme} pieceSet={preferences.pieceSet} />
-                          <div className="min-w-0 flex-1">
-                            <span className="block text-xs font-bold text-white truncate">{theme.name}</span>
-                            <span className="text-[10px] text-slate-400 block truncate">{theme.description ?? ''}</span>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </section>
-
-                {/* Piece Sets */}
-                <section>
-                  <div>
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400">Piece Sets</h4>
-                    <p className="text-[11px] text-slate-400">Crisp vector Staunton pieces with tailored visual styles.</p>
-                  </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                    {PIECE_SETS.map((set) => {
-                      const isSelected = preferences.pieceSet === set.id;
-                      return (
-                        <button
-                          key={set.id}
-                          type="button"
-                          onClick={() => onUpdatePreferences({ ...preferences, pieceSet: set.id })}
-                          className={`rounded-xl border p-2.5 text-center transition-all ${
-                            isSelected
-                              ? 'border-amber-400 bg-amber-400/10 ring-1 ring-amber-400/80'
-                              : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
-                          }`}
-                        >
-                          <div className="flex items-center justify-center gap-1.5 h-8">
-                            <div className="w-7 h-7">
-                              <ChessPiece type="k" color="w" pieceSet={set.id} />
-                            </div>
-                            <div className="w-7 h-7">
-                              <ChessPiece type="n" color="b" pieceSet={set.id} />
-                            </div>
-                          </div>
-                          <p className="mt-1 text-xs font-bold text-slate-300">{set.name}</p>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </section>
-
-                {/* Highlight Styles */}
-                <section>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400">Highlight Styles</h4>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                    {HIGHLIGHT_STYLES.map((h) => {
-                      const isSelected = preferences.highlightStyle === h.id;
-                      return (
-                        <button
-                          key={h.id}
-                          type="button"
-                          onClick={() => onUpdatePreferences({ ...preferences, highlightStyle: h.id })}
-                          className={`rounded-xl border p-3 text-left transition-all ${
-                            isSelected
-                              ? 'border-amber-400 bg-amber-400/10'
-                              : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
-                          }`}
-                        >
-                          <span className="text-xs font-bold text-white">{h.name}</span>
-                          <p className="text-[11px] text-slate-400">{h.desc}</p>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </section>
-
-                {/* UI Themes */}
-                <section>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400">Application UI Themes</h4>
-                  <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-                    {UI_THEMES.map((t) => {
-                      const isSelected = preferences.uiTheme === t.id;
-                      return (
-                        <button
-                          key={t.id}
-                          type="button"
-                          onClick={() => handleUiThemeChange(t.id)}
-                          className={`flex items-center gap-2.5 rounded-xl border p-2.5 transition-all ${
-                            isSelected
-                              ? 'border-amber-400 bg-amber-400/10'
-                              : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
-                          }`}
-                        >
-                          <span className="h-5 w-5 rounded-full border border-slate-700 shadow" style={{ backgroundColor: t.bg }} />
-                          <span className="text-xs font-bold text-white truncate">{t.name}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </section>
-
-                {/* Board Display Elements */}
-                <section>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400">Display Options</h4>
-                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                    <label className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-                      <span className="text-xs font-semibold text-slate-300">Board Coordinates</span>
-                      <input
-                        type="checkbox"
-                        checked={preferences.boardSettings.coordinates}
-                        onChange={(e) =>
-                          onUpdatePreferences({
-                            ...preferences,
-                            boardSettings: { ...preferences.boardSettings, coordinates: e.target.checked },
-                          })
-                        }
-                        className="h-4 w-4 rounded accent-amber-400"
-                      />
-                    </label>
-
-                    <label className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-                      <span className="text-xs font-semibold text-slate-300">Coordinate Size</span>
-                      <select
-                        value={preferences.boardSettings.coordinateStyle}
-                        onChange={(e) =>
-                          onUpdatePreferences({
-                            ...preferences,
-                            boardSettings: {
-                              ...preferences.boardSettings,
-                              coordinateStyle: e.target.value as 'inside' | 'outside' | 'small' | 'large',
-                            },
-                          })
-                        }
-                        className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-white"
-                      >
-                        <option value="inside">Standard</option>
-                        <option value="small">Small</option>
-                        <option value="large">Large</option>
-                      </select>
-                    </label>
-
-                    <label className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-                      <span className="text-xs font-semibold text-slate-300">Board Border & Shell</span>
-                      <input
-                        type="checkbox"
-                        checked={preferences.boardSettings.boardBorder}
-                        onChange={(e) =>
-                          onUpdatePreferences({
-                            ...preferences,
-                            boardSettings: { ...preferences.boardSettings, boardBorder: e.target.checked },
-                          })
-                        }
-                        className="h-4 w-4 rounded accent-amber-400"
-                      />
-                    </label>
-
-                    <label className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-                      <span className="text-xs font-semibold text-slate-300">Rounded Corners</span>
-                      <input
-                        type="checkbox"
-                        checked={preferences.boardSettings.roundedCorners}
-                        onChange={(e) =>
-                          onUpdatePreferences({
-                            ...preferences,
-                            boardSettings: { ...preferences.boardSettings, roundedCorners: e.target.checked },
-                          })
-                        }
-                        className="h-4 w-4 rounded accent-amber-400"
-                      />
-                    </label>
-                  </div>
-                </section>
-              </div>
-            </div>
-          )}
-
-          {/* CUSTOM BOARD BUILDER TAB */}
-          {activeTab === 'builder' && (
-            <CustomBoardBuilder
-              customThemes={customThemes}
-              activeThemeId={preferences.activeThemeId}
-              onSaveTheme={onSaveCustomTheme}
-              onDeleteTheme={onDeleteCustomTheme}
-              onSelectTheme={(id) => onUpdatePreferences({ ...preferences, activeThemeId: id })}
-            />
-          )}
-
-          {/* SOUND TAB */}
-          {activeTab === 'sound' && (
-            <div className="space-y-4 max-w-lg">
-              <label className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/60 p-3.5">
-                <div>
-                  <span className="text-sm font-bold text-white">Master Sound</span>
-                  <p className="text-xs text-slate-400">Toggle all application audio effects</p>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={preferences.sound.master}
-                  onChange={(e) =>
-                    onUpdatePreferences({
-                      ...preferences,
-                      sound: { ...preferences.sound, master: e.target.checked },
-                    })
-                  }
-                  className="h-5 w-5 rounded accent-amber-400"
-                />
-              </label>
-
-              <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Master Volume</span>
-                  <span className="font-mono text-xs font-bold text-amber-300">
-                    {Math.round(preferences.sound.volume * 100)}%
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={Math.round(preferences.sound.volume * 100)}
-                  disabled={!preferences.sound.master}
-                  aria-label="Master volume"
-                  onChange={(e) => {
-                    const volume = Number(e.target.value) / 100;
-                    invalidateSoundVolumeCache();
-                    onUpdatePreferences({
-                      ...preferences,
-                      sound: { ...preferences.sound, volume },
-                    });
-                  }}
-                  className="mt-2 w-full accent-amber-400"
-                />
-              </div>
-
-              <div className="space-y-2 rounded-xl border border-slate-800 bg-slate-950/60 p-4">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Individual Sound Cues</span>
-                {([
-                  { key: 'move', label: 'Move Clicks' },
-                  { key: 'capture', label: 'Piece Captures' },
-                  { key: 'check', label: 'Check Warnings' },
-                  { key: 'gameEnd', label: 'Victory & Defeat Chords' },
-                ] as const).map((item) => (
-                  <label key={item.key} className="flex items-center justify-between py-1.5">
-                    <span className="text-xs text-slate-300">{item.label}</span>
-                    <input
-                      type="checkbox"
-                      disabled={!preferences.sound.master}
-                      checked={preferences.sound[item.key]}
-                      onChange={(e) =>
-                        onUpdatePreferences({
-                          ...preferences,
-                          sound: {
-                            ...preferences.sound,
-                            [item.key]: e.target.checked,
-                          },
-                        })
-                      }
-                      className="h-4 w-4 rounded accent-amber-400"
-                    />
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* GAMEPLAY TAB */}
-          {activeTab === 'gameplay' && (
-            <div className="space-y-5 max-w-lg">
-              <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-400">Default Orientation</label>
-                <div className="mt-2 grid grid-cols-3 gap-2">
-                  {[
-                    { val: 'w', label: 'White' },
-                    { val: 'b', label: 'Black' },
-                    { val: 'random', label: 'Auto (My Color)' },
-                  ].map((opt) => (
-                    <button
-                      key={opt.val}
-                      type="button"
-                      onClick={() => onUpdatePreferences({ ...preferences, preferredColor: opt.val as 'w' | 'b' | 'random' })}
-                      className={`rounded-lg border p-2 text-xs font-bold ${
-                        preferences.preferredColor === opt.val
-                          ? 'border-amber-400 bg-amber-400/10 text-amber-300'
-                          : 'border-slate-800 bg-slate-950/60 text-slate-300'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-400">Player Profile</label>
-                <div className="mt-2 flex gap-3">
-                  <div className="flex-1">
-                    <input
-                      type="text"
-                      value={preferences.playerName}
-                      onChange={(e) => onUpdatePreferences({ ...preferences, playerName: e.target.value })}
-                      className="field text-sm"
-                      placeholder="Player Name"
-                      maxLength={24}
-                    />
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {AVATARS.slice(0, 5).map((a) => (
-                      <button
-                        key={a}
-                        type="button"
-                        onClick={() => onUpdatePreferences({ ...preferences, avatar: a })}
-                        className={`h-9 w-9 rounded-lg border text-base ${
-                          preferences.avatar === a ? 'border-amber-400 bg-amber-400/20' : 'border-slate-800 bg-slate-950/60'
-                        }`}
-                      >
-                        {a}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ANALYSIS TAB */}
-          {activeTab === 'analysis' && (
-            <div className="space-y-4 max-w-lg">
-              <h3 className="text-sm font-bold uppercase tracking-wider text-amber-400">Stockfish Engine Settings</h3>
-              <p className="text-xs text-slate-400">
-                Game analysis runs fully offline in your browser using the bundled Stockfish WASM engine.
-              </p>
-
-              <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
-                <p className="text-xs text-slate-300">
-                  The analysis search depth is selected inside the game review screen (Quick 10 / Standard 12 / Deep 15),
-                  next to the <span className="font-bold text-amber-300">Analyze Game</span> button.
-                </p>
-                <p className="mt-2 text-[11px] text-slate-400">
-                  Recommended: Depth 12 gives reliable move evaluations and blunder detection without long waits.
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* UPDATES TAB */}
-          {activeTab === 'updates' && (
-            <div className="space-y-6 max-w-lg">
-              <div>
-                <h3 className="text-sm font-bold uppercase tracking-wider text-amber-400">Application Updates</h3>
-                <p className="mt-1 text-xs text-slate-400">
-                  Check for new releases and manage in-app desktop updates.
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-                  <div>
-                    <p className="text-xs font-semibold text-slate-400">Installed Version</p>
-                    <p className="text-sm font-mono font-bold text-white">v{appVersion}</p>
-                  </div>
-                  <span className="rounded-full bg-slate-800 px-2.5 py-1 text-[11px] font-medium text-slate-300">
-                    {isDesktopApp() ? 'Windows Desktop' : 'Web Client'}
-                  </span>
-                </div>
-
-                {/* Update Status Card */}
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold text-slate-400">Status</p>
-
-                  {/* Idle / Up to date */}
-                  {(!updateStatus || updateStatus.status === 'idle' || updateStatus.status === 'not-available') && !isCheckingUpdates && (
-                    <div className="flex items-center gap-2 text-xs text-emerald-400">
-                      <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                      <span>LAN Chess is up to date.</span>
-                    </div>
-                  )}
-
-                  {/* Checking */}
-                  {(updateStatus?.status === 'checking' || isCheckingUpdates) && (
-                    <div className="flex items-center gap-2 text-xs text-amber-300">
-                      <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
-                      <span>Checking update server...</span>
-                    </div>
-                  )}
-
-                  {/* Available */}
-                  {updateStatus?.status === 'available' && !isCheckingUpdates && (
-                    <div className="flex items-center gap-2 text-xs text-sky-300">
-                      <span className="h-2 w-2 rounded-full bg-sky-400 animate-pulse" />
-                      <span>Version v{updateStatus.info?.version} is available. Starting download...</span>
-                    </div>
-                  )}
-
-                  {/* Downloading with Progress Bar */}
-                  {updateStatus?.status === 'downloading' && (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-xs text-slate-300">
-                        <span className="font-semibold text-sky-300">Downloading update v{updateStatus.info?.version}...</span>
-                        <span className="font-mono">{updateStatus.progress?.percent || 0}%</span>
-                      </div>
-                      <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800">
-                        <div
-                          className="h-full bg-gradient-to-r from-sky-500 to-amber-400 transition-all duration-300"
-                          style={{ width: `${updateStatus.progress?.percent || 0}%` }}
-                        />
-                      </div>
-                      {updateStatus.progress && (
-                        <div className="flex justify-between text-[11px] text-slate-400 font-mono">
-                          <span>{formatSpeed(updateStatus.progress.bytesPerSecond)}</span>
-                          <span>
-                            {formatBytes(updateStatus.progress.transferred)} / {formatBytes(updateStatus.progress.total)}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Downloaded / Ready to Install */}
-                  {updateStatus?.status === 'downloaded' && (
-                    <div className="rounded-lg border border-emerald-500/40 bg-emerald-950/30 p-3 space-y-2">
-                      <div className="flex items-center gap-2 text-xs font-bold text-emerald-300">
-                        <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                        <span>Update v{updateStatus.info?.version} is ready to install!</span>
-                      </div>
-                      <p className="text-[11px] text-slate-300">
-                        The update has been downloaded and verified via SHA-512 blockmap. Restart to apply.
-                      </p>
-                      {isGameActive ? (
-                        <div className="rounded bg-amber-950/60 p-2 text-[11px] text-amber-300 border border-amber-500/30">
-                          ⚠️ A chess match is currently in progress. Please complete or leave your game before restarting.
-                        </div>
-                      ) : null}
-                      <button
-                        type="button"
-                        onClick={handleRestartToUpdate}
-                        disabled={isGameActive}
-                        className="action-button action-primary w-full py-2 text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {isGameActive ? 'Disabled During Active Game' : 'Restart & Update Now'}
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Error State */}
-                  {(updateStatus?.status === 'error' || updateError) && !isCheckingUpdates && (
-                    <div className="rounded-lg border border-rose-500/40 bg-rose-950/30 p-3 space-y-1 text-xs text-rose-200">
-                      <p className="font-bold text-rose-300">Update check failed</p>
-                      <p className="text-[11px] text-rose-200/80">{updateError || updateStatus?.error}</p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Action Buttons */}
-                <div className="pt-2 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={handleCheckUpdates}
-                    disabled={isCheckingUpdates || updateStatus?.status === 'downloading'}
-                    className="action-button action-secondary flex-1 py-2 text-xs font-bold disabled:opacity-50"
-                  >
-                    {isCheckingUpdates ? 'Checking...' : 'Check for Updates'}
-                  </button>
-                </div>
-              </div>
-
-              {/* Bootstrapping / Architecture info note */}
-              <div className="rounded-xl border border-slate-800/80 bg-slate-950/40 p-3.5 text-[11px] text-slate-400 space-y-1">
-                <p className="font-bold text-slate-300">ℹ️ About In-App Updates</p>
-                <p>
-                  LAN Chess updates are distributed securely via GitHub Releases using NSIS differential blockmaps.
-                  Updates never restart automatically during a live game.
-                </p>
-                <p className="text-slate-500">
-                  Note: Existing v1.1.0 and v1.1.1 users require one manual upgrade to v1.2.0 to bootstrap this in-app updater.
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="flex justify-end border-t border-slate-800 bg-slate-950/60 px-6 py-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="action-button action-primary text-xs font-bold"
-          >
-            Done
-          </button>
+  const sound = preferences.sound;
+  const animation = preferences.animation;
+  return <div className="settings-backdrop" onClick={onClose}>
+    <div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="settings-title" tabIndex={-1}
+      className="settings-dialog" onClick={event => event.stopPropagation()}>
+      <header className="settings-header"><h2 id="settings-title">Settings</h2>
+        <button type="button" className="settings-close" aria-label="Close settings" onClick={onClose}>×</button>
+      </header>
+      <div className="settings-body">
+        <nav className="settings-nav" aria-label="Settings sections">{sectionIds.map(id =>
+          <button type="button" key={id} aria-current={section===id ? 'page' : undefined} onClick={()=>setSection(id)}>{sections[id]}</button>
+        )}</nav>
+        <label className="settings-mobile-nav">Section<select value={section} onChange={e=>setSection(e.target.value as Section)}>
+          {sectionIds.map(id => <option key={id} value={id}>{sections[id]}</option>)}</select>
+        </label>
+        <div key={section} className="settings-pane" role="region" aria-label={sections[section]}>
+          {section==='appearance' && <AppearanceSettings preferences={preferences} customThemes={customThemes} onChange={update} openBuilder={()=>setSection('builder')}/>}
+          {section==='builder' && <CustomBoardBuilder customThemes={customThemes} pieceSet={preferences.pieceSet} activeThemeId={preferences.activeThemeId}
+            onSaveTheme={onSaveCustomTheme} onDeleteTheme={onDeleteCustomTheme} onSelectTheme={id=>update({...preferences,activeThemeId:id})}/>}
+          {section==='sound' && <section className="setting-stack"><h3>Sound</h3>
+            <label className="setting-row">Game audio<input type="checkbox" checked={sound.master} onChange={e=>update({...preferences,sound:{...sound,master:e.target.checked}})}/></label>
+            <label className="setting-row">Master volume <output>{Math.round(sound.volume*100)}%</output>
+              <input type="range" disabled={!sound.master} min="0" max="100" value={Math.round(sound.volume*100)}
+                onChange={e=>update({...preferences,sound:{...sound,volume:Number(e.target.value)/100}})}/></label>
+            <fieldset className="setting-list" disabled={!sound.master}><legend>Sound cues</legend>
+              {([['move','Moves'],['capture','Captures'],['check','Check'],['gameEnd','Game over']] as const).map(([key,label]) =>
+                <label key={key} className="setting-row">{label}<input type="checkbox" checked={sound[key]} onChange={e=>update({...preferences,sound:{...sound,[key]:e.target.checked}})}/></label>)}
+            </fieldset>
+            <button type="button" className="action-button action-secondary" disabled={!sound.master || sound.volume===0} onClick={playMoveSound}>Preview move sound</button>
+          </section>}
+          {section==='gameplay' && <section className="setting-stack"><h3>Gameplay</h3>
+            <label className="setting-row">Player name<input className="field" maxLength={24} type="text" value={preferences.playerName} onChange={e=>update({...preferences,playerName:e.target.value})}/></label>
+            <fieldset className="setting-list"><legend>Profile piece</legend><div className="avatar-options">
+              {avatars.map(([symbol,name])=><button type="button" key={symbol} aria-label={name} aria-pressed={preferences.avatar===symbol} onClick={()=>update({...preferences,avatar:symbol})}>{symbol}</button>)}
+            </div></fieldset>
+            <label className="setting-row">Board orientation<select value={preferences.preferredColor} onChange={e=>update({...preferences,preferredColor:e.target.value as UserPreferences['preferredColor']})}>
+              <option value="random">My side</option><option value="w">White at bottom</option><option value="b">Black at bottom</option>
+            </select></label>
+            <label className="setting-row">Board animations<input type="checkbox" checked={animation.enabled} onChange={e=>update({...preferences,animation:{...animation,enabled:e.target.checked}})}/></label>
+            <label className="setting-row">Animation speed<select disabled={!animation.enabled} value={animation.speed} onChange={e=>update({...preferences,animation:{...animation,speed:e.target.value as typeof animation.speed}})}>
+              <option value="instant">Instant</option><option value="fast">Fast</option><option value="smooth">Smooth</option>
+            </select></label>
+          </section>}
+          {section==='analysis' && <section className="setting-stack"><div><h3>Game analysis</h3><p>Choose how far the offline Stockfish engine searches when you open a new game review.</p></div>
+            <label className="setting-row">Default search depth<select value={preferences.analysisDepth} onChange={e=>update({...preferences,analysisDepth:Number(e.target.value) as UserPreferences['analysisDepth']})}>
+              <option value={10}>Quick · 10</option><option value={12}>Standard · 12</option><option value={15}>Deep · 15</option>
+            </select></label><p>You can change the depth for an individual game in Review.</p>
+          </section>}
+          {section==='updates' && <UpdateSettings gameActive={isGameActive}/>}
         </div>
       </div>
     </div>
-  );
-};
+  </div>;
+}

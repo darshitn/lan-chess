@@ -62,6 +62,7 @@ export const Chessboard: React.FC<ChessboardProps> = React.memo(({
   // Local annotations (arrows & square markers)
   const [arrows, setArrows] = useState<ArrowAnnotation[]>([]);
   const [markers, setMarkers] = useState<Set<Square>>(new Set());
+  const [focusSquare, setFocusSquare] = useState<Square>(flipped ? 'h1' : 'a8');
   const rightClickStartRef = useRef<Square | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -157,8 +158,8 @@ export const Chessboard: React.FC<ChessboardProps> = React.memo(({
     if (key === 'ArrowLeft') nextFile = Math.max(0, fileIndex - 1);
     if (key === 'ArrowRight') nextFile = Math.min(displayFiles.length - 1, fileIndex + 1);
 
-    if (nextFile === fileIndex && nextRank === rankIndex) return;
     e.preventDefault();
+    if (nextFile === fileIndex && nextRank === rankIndex) return;
     const nextSquare = `${displayFiles[nextFile]}${displayRanks[nextRank]}`;
     containerRef.current
       ?.querySelector<HTMLElement>(`[data-square="${nextSquare}"]`)
@@ -175,10 +176,12 @@ export const Chessboard: React.FC<ChessboardProps> = React.memo(({
   }, []);
 
   const isChecked = chess.isCheck();
+  const isMate = isChecked && chess.isCheckmate();
   const currentTurn = chess.turn();
 
   // Settings helpers
   const showCoords = boardSettings?.coordinates ?? true;
+  const outsideCoords = showCoords && boardSettings?.coordinateStyle === 'outside';
   const coordClass = boardSettings?.coordinateStyle === 'small' ? 'coord-small' : boardSettings?.coordinateStyle === 'large' ? 'coord-large' : '';
   const pieceScale = boardSettings?.pieceScale ?? 1.0;
 
@@ -191,6 +194,12 @@ export const Chessboard: React.FC<ChessboardProps> = React.memo(({
 
   return (
     <div className={shellClasses}>
+      <div className={outsideCoords ? 'board-with-coordinates' : undefined}>
+      {outsideCoords && (
+        <div className="board-ranks" aria-hidden="true">
+          {displayRanks.map((rank) => <span key={rank}>{rank}</span>)}
+        </div>
+      )}
       <div
         ref={containerRef}
         className={`chessboard pieceset-${pieceSet} highlight-${highlightStyle} ${coordClass}`}
@@ -225,7 +234,7 @@ export const Chessboard: React.FC<ChessboardProps> = React.memo(({
               // Screen-reader label carries the position state, not just content.
               const squareLabel = [
                 `${square}${piece ? `, ${piece.color === 'w' ? 'white' : 'black'} ${PIECE_NAMES[piece.type]}` : ', empty'}`,
-                isKingInCheck ? 'king in check' : '',
+                isKingInCheck ? (isMate ? 'king in checkmate' : 'king in check') : '',
                 isSelected ? 'selected' : '',
                 targetMove ? 'legal move target' : '',
                 isLastMove ? 'last move' : '',
@@ -237,7 +246,7 @@ export const Chessboard: React.FC<ChessboardProps> = React.memo(({
               // Calculate square background color based on theme
               let squareBg: string | undefined = undefined;
               if (theme) {
-                if (isKingInCheck) squareBg = theme.checkSquare;
+                if (isKingInCheck) squareBg = isMate ? theme.checkmateSquare : theme.checkSquare;
                 else if (isSelected) squareBg = theme.selectedSquare;
                 else if (isLastMove) squareBg = theme.lastMoveSquare;
                 else squareBg = isLight ? theme.lightSquare : theme.darkSquare;
@@ -251,7 +260,9 @@ export const Chessboard: React.FC<ChessboardProps> = React.memo(({
                   data-square={square}
                   aria-selected={isSelected}
                   aria-label={squareLabel}
-                  onClick={() => onSquareClick(square)}
+                  tabIndex={focusSquare === square ? 0 : -1}
+                  onFocus={() => setFocusSquare(square)}
+                  onClick={() => { if (isInteractive) onSquareClick(square); }}
                   onMouseDown={(e) => handleMouseDown(e, square)}
                   onMouseUp={(e) => handleMouseUp(e, square)}
                   onDragOver={handleDragOver}
@@ -266,7 +277,7 @@ export const Chessboard: React.FC<ChessboardProps> = React.memo(({
                   } ${isPremoveDestination ? 'premove-destination' : ''}`}
                 >
                   {/* Coordinates notation */}
-                  {showCoords && colIndex === 0 && (
+                  {showCoords && !outsideCoords && colIndex === 0 && (
                     <span
                       className={`rank-label ${
                         isLight ? 'dark-label' : 'light-label'
@@ -276,7 +287,7 @@ export const Chessboard: React.FC<ChessboardProps> = React.memo(({
                       {rank}
                     </span>
                   )}
-                  {showCoords && rowIndex === 7 && (
+                  {showCoords && !outsideCoords && rowIndex === 7 && (
                     <span
                       className={`file-label ${
                         isLight ? 'dark-label' : 'light-label'
@@ -318,6 +329,12 @@ export const Chessboard: React.FC<ChessboardProps> = React.memo(({
             })}
           </div>
         ))}
+      </div>
+      {outsideCoords && (
+        <div className="board-files" aria-hidden="true">
+          {displayFiles.map((file) => <span key={file}>{file}</span>)}
+        </div>
+      )}
       </div>
 
       {(arrows.length > 0 || markers.size > 0) && (

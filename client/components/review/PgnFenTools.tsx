@@ -23,6 +23,7 @@ export const PgnFenTools: React.FC<PgnFenToolsProps> = ({
   // navigator.clipboard is unavailable on insecure origins (this app is served
   // over plain HTTP on the LAN), so fall back to execCommand.
   const copyToClipboard = async (text: string, label: string) => {
+    setErrorMsg(null);
     const result = await clipboardCopy(text);
     if (result.success) {
       setCopiedMsg(`Copied ${label} to clipboard!`);
@@ -80,16 +81,16 @@ export const PgnFenTools: React.FC<PgnFenToolsProps> = ({
   };
 
   return (
-    <div className="space-y-4 rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+    <div className="panel space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-amber-400">PGN & FEN Utilities</h3>
+        <h3 className="text-xs font-bold uppercase tracking-wider text-amber-400">Game notation</h3>
         {copiedMsg && (
-          <span className="text-xs font-semibold text-emerald-400 animate-pulse">{copiedMsg}</span>
+          <span role="status" className="text-xs font-semibold text-emerald-400">{copiedMsg}</span>
         )}
       </div>
 
       {errorMsg && (
-        <div className="rounded-lg bg-rose-950/80 p-2 text-xs text-rose-300 border border-rose-800/60">
+        <div role="alert" className="rounded-lg bg-rose-950/80 p-2 text-xs text-rose-300 border border-rose-800/60">
           {errorMsg}
         </div>
       )}
@@ -133,6 +134,7 @@ export const PgnFenTools: React.FC<PgnFenToolsProps> = ({
             <button
               type="button"
               onClick={handleApplyFen}
+              disabled={!fenInput.trim()}
               className="action-button action-secondary text-xs whitespace-nowrap"
             >
               Load FEN
@@ -159,6 +161,7 @@ export const PgnFenTools: React.FC<PgnFenToolsProps> = ({
             <button
               type="button"
               onClick={handleApplyPgn}
+              disabled={!pgnInput.trim()}
               className="action-button action-secondary text-xs"
             >
               Import PGN

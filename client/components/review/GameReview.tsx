@@ -1,14 +1,14 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Chess } from 'chess.js';
+import { loadUserPreferences } from '../../services/preferences.js';
 import type { GameMove } from '../../../shared/types.js';
 import type { BoardDisplaySettings, BoardTheme, HighlightStyleId, PieceSetId } from '../../types/preferences.js';
 import { Chessboard } from '../Chessboard.js';
-import { ResponsiveBoardFrame } from '../ResponsiveBoardFrame.js';
+import { StudyBoardFrame } from '../StudyBoardFrame.js';
 import { PgnFenTools } from './PgnFenTools.js';
 import { EngineAnalysisPanel } from '../analysis/EngineAnalysisPanel.js';
 import {
   stockfishEngine,
-  type EngineScore,
   type GameAnalysisReport,
   type MoveClassification,
 } from '../../services/stockfish-engine.js';
@@ -52,7 +52,7 @@ export const GameReview: React.FC<GameReviewProps> = ({
   const [analysisReport, setAnalysisReport] = useState<GameAnalysisReport | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisProgress, setAnalysisProgress] = useState(0);
-  const [selectedDepth, setSelectedDepth] = useState(12);
+  const [selectedDepth, setSelectedDepth] = useState<number>(() => loadUserPreferences().analysisDepth);
 
   // Pre-generate all board positions across the game
   const positions = useMemo(() => {
@@ -79,13 +79,6 @@ export const GameReview: React.FC<GameReviewProps> = ({
     const sans = game.moves.slice(0, currentPly).map((m) => m.san);
     return identifyOpening(sans);
   }, [game.moves, currentPly]);
-
-  // Current evaluation from report if available, else zero
-  const currentEvaluation: EngineScore = useMemo(() => {
-    if (!analysisReport) return { type: 'cp', value: 0 };
-    const match = analysisReport.positions.find((p) => p.ply === currentPly);
-    return match?.evaluation ?? { type: 'cp', value: 0 };
-  }, [analysisReport, currentPly]);
 
   // Navigation handlers
   const goToPly = useCallback((ply: number) => {
@@ -128,7 +121,8 @@ export const GameReview: React.FC<GameReviewProps> = ({
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.defaultPrevented || e.target instanceof HTMLElement &&
+        e.target.closest('input, textarea, select, button, [role="slider"], [role="dialog"], [contenteditable="true"]')) return;
 
       if (e.key === 'ArrowLeft') {
         e.preventDefault();
@@ -152,8 +146,12 @@ export const GameReview: React.FC<GameReviewProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [goPrev, goNext, goFirst, goLast]);
 
+  const analysisRequest = useRef(0);
+  const [analysisError, setAnalysisError] = useState('');
   // Run full Stockfish engine analysis
   const handleRunAnalysis = async () => {
+    const request = ++analysisRequest.current;
+    setAnalysisError('');
     setIsAnalyzing(true);
     setAnalysisProgress(0);
 
@@ -162,17 +160,18 @@ export const GameReview: React.FC<GameReviewProps> = ({
         positions[0].fen,
         game.moves,
         selectedDepth,
-        ({ percent }) => setAnalysisProgress(percent)
+        ({ percent }) => { if (request === analysisRequest.current) setAnalysisProgress(percent); }
       );
-      setAnalysisReport(report);
+      if (request === analysisRequest.current) setAnalysisReport(report);
     } catch {
-      // Error handling
+      if (request === analysisRequest.current) setAnalysisError('Analysis stopped. Select Analyze Game to try again.');
     } finally {
-      setIsAnalyzing(false);
+      if (request === analysisRequest.current) setIsAnalyzing(false);
     }
   };
 
   const handleCancelAnalysis = () => {
+    analysisRequest.current++;
     stockfishEngine.cancelAnalysis();
     setIsAnalyzing(false);
   };
@@ -180,6 +179,7 @@ export const GameReview: React.FC<GameReviewProps> = ({
   // Stop any in-flight engine search when leaving the review screen.
   useEffect(() => {
     return () => {
+      analysisRequest.current++;
       stockfishEngine.cancelAnalysis();
     };
   }, []);
@@ -226,9 +226,9 @@ export const GameReview: React.FC<GameReviewProps> = ({
       </header>
 
       {/* Main Grid: Board Column + Sidebar Review Tools */}
-      <div className="grid gap-4 lg:gap-6 lg:grid-cols-[minmax(0,1fr)_24rem] lg:items-start">
+      <div className="grid grid-cols-1 gap-4 lg:gap-6 lg:grid-cols-[minmax(0,1fr)_24rem] lg:items-start">
         {/* Left Column: Board & Controls */}
-        <section className="mx-auto w-full max-w-[46rem]">
+        <section className="study-board-column mx-auto w-full min-w-0 max-w-[46rem]">
           {/* Position Info Bar */}
           <div className="mb-1.5 sm:mb-2 flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/90 px-3 py-1.5 text-xs">
             <span className="font-semibold text-white">
@@ -239,7 +239,7 @@ export const GameReview: React.FC<GameReviewProps> = ({
             </span>
           </div>
 
-          <ResponsiveBoardFrame>
+          <StudyBoardFrame>
             <Chessboard
               chess={currentPosition.chess}
               flipped={flipped}
@@ -254,10 +254,10 @@ export const GameReview: React.FC<GameReviewProps> = ({
               onSquareClick={() => {}}
               onPieceDrop={() => {}}
             />
-          </ResponsiveBoardFrame>
+          </StudyBoardFrame>
 
           {/* Replay Controls Bar */}
-          <div className="mt-2 sm:mt-3 flex items-center justify-center gap-2 rounded-xl border border-slate-800 bg-slate-900/80 p-2 sm:p-2.5 shadow-md">
+          <div className="mt-2 sm:mt-3 flex flex-wrap items-center justify-center gap-2 rounded-xl border border-slate-800 bg-slate-900/80 p-2 sm:p-2.5 shadow-md">
             <button
               type="button"
               onClick={goFirst}
@@ -307,8 +307,8 @@ export const GameReview: React.FC<GameReviewProps> = ({
 
         {/* Right Column: Engine Analysis & Move List */}
         <aside className="space-y-3 lg:max-h-[calc(100dvh-5.5rem)] lg:overflow-y-auto lg:pr-1">
+          {analysisError && <p role="alert" className="text-sm text-rose-300">{analysisError}</p>}
           <EngineAnalysisPanel
-            currentEvaluation={currentEvaluation}
             currentPly={currentPly}
             report={analysisReport}
             isAnalyzing={isAnalyzing}

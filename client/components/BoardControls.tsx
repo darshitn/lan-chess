@@ -3,7 +3,7 @@ import {
   DEFAULT_MIN_BOARD_SIZE,
   BOARD_SIZE_STEP,
 } from '../services/board-sizing.js';
-import type { BoardSizeMode } from '../services/board-display.js';
+import type { BoardSizeMode, UseBoardDisplayReturn } from '../services/board-display.js';
 
 export interface BoardControlsProps {
   sizeMode: BoardSizeMode;
@@ -19,8 +19,34 @@ export interface BoardControlsProps {
   onCustomSizeChange: (size: number) => void;
   onStepSize: (delta: number) => void;
   onResetToFit: () => void;
-  onToggleFocusBoard: () => void;
+  onToggleFocusBoard?: () => void;
   onToggleFullscreen: () => void;
+}
+
+interface BoardDisplayControlsProps {
+  display: UseBoardDisplayReturn;
+  measure: Pick<BoardControlsProps, 'currentSize' | 'fitSize' | 'maxAllowedWidth'>;
+  allowFocus?: boolean;
+}
+
+export function BoardDisplayControls({ display, measure, allowFocus = true }: BoardDisplayControlsProps) {
+  return (
+    <BoardControls
+      {...measure}
+      sizeMode={display.sizeMode}
+      focusBoard={allowFocus && display.focusBoard}
+      isFullscreen={display.isFullscreen}
+      isFullscreenSupported={display.isFullscreenSupported}
+      fullscreenError={display.fullscreenError}
+      onClearFullscreenError={display.clearFullscreenError}
+      onSetSizeMode={display.setSizeMode}
+      onCustomSizeChange={display.setCustomSize}
+      onStepSize={(delta) => display.stepCustomSize(delta, measure.currentSize)}
+      onResetToFit={display.resetToFit}
+      onToggleFocusBoard={allowFocus ? display.toggleFocusBoard : undefined}
+      onToggleFullscreen={display.toggleFullscreen}
+    />
+  );
 }
 
 export const BoardControls: React.FC<BoardControlsProps> = ({
@@ -38,27 +64,24 @@ export const BoardControls: React.FC<BoardControlsProps> = ({
   onToggleFocusBoard,
   onToggleFullscreen,
 }) => {
-  const maxRange = Math.max(DEFAULT_MIN_BOARD_SIZE, maxAllowedWidth);
-  const isAtMin = currentSize <= DEFAULT_MIN_BOARD_SIZE;
-  const isAtMax = currentSize >= maxAllowedWidth;
+  const maxRange = Math.max(1, maxAllowedWidth);
+  const minRange = Math.min(DEFAULT_MIN_BOARD_SIZE, maxRange);
+  const isAtMin = currentSize <= minRange;
+  const isAtMax = currentSize >= maxRange;
 
   return (
     <div
-      className="board-controls mb-1.5 sm:mb-2 flex flex-wrap items-center justify-between gap-1.5 rounded-lg border border-slate-800 bg-slate-900/90 px-2.5 py-1 text-xs select-none"
+      className="board-controls"
       role="toolbar"
       aria-label="Chessboard view and sizing controls"
     >
       {/* Sizing Controls */}
-      <div className="flex items-center gap-1 sm:gap-1.5 flex-1 min-w-[200px]">
+      <div className="board-size-tools">
         {/* Fit button */}
         <button
           type="button"
           onClick={onResetToFit}
-          className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-colors ${
-            sizeMode === 'fit'
-              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm shadow-amber-500/10'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-transparent'
-          }`}
+          className="board-tool"
           aria-label="Reset board size to fit screen"
           aria-pressed={sizeMode === 'fit'}
           title="Fit to screen (auto-size to window)"
@@ -71,7 +94,7 @@ export const BoardControls: React.FC<BoardControlsProps> = ({
           type="button"
           onClick={() => onStepSize(-BOARD_SIZE_STEP)}
           disabled={isAtMin}
-          className="h-6 w-6 flex items-center justify-center rounded text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-transparent font-bold transition-colors"
+          className="board-tool board-step"
           aria-label="Decrease board size"
           title="Decrease board size"
         >
@@ -81,14 +104,14 @@ export const BoardControls: React.FC<BoardControlsProps> = ({
         {/* Live slider */}
         <input
           type="range"
-          min={DEFAULT_MIN_BOARD_SIZE}
+          min={minRange}
           max={maxRange}
-          step={8}
+          step={1}
           value={Math.min(currentSize, maxRange)}
           onChange={(e) => onCustomSizeChange(Number(e.target.value))}
-          className="board-size-slider flex-1 min-w-[64px] max-w-[140px] h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500 hover:accent-amber-400"
+          className="board-range"
           aria-label="Board size"
-          aria-valuemin={DEFAULT_MIN_BOARD_SIZE}
+          aria-valuemin={minRange}
           aria-valuemax={maxRange}
           aria-valuenow={currentSize}
           aria-valuetext={`${currentSize} pixels${sizeMode === 'fit' ? ' (auto-fit)' : ''}`}
@@ -99,7 +122,7 @@ export const BoardControls: React.FC<BoardControlsProps> = ({
           type="button"
           onClick={() => onStepSize(BOARD_SIZE_STEP)}
           disabled={isAtMax}
-          className="h-6 w-6 flex items-center justify-center rounded text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-transparent font-bold transition-colors"
+          className="board-tool board-step"
           aria-label="Increase board size"
           title="Increase board size"
         >
@@ -108,7 +131,7 @@ export const BoardControls: React.FC<BoardControlsProps> = ({
 
         {/* Pixel readout */}
         <span
-          className="font-mono text-[11px] text-slate-400 min-w-[38px] text-right"
+          className="board-dimension"
           aria-hidden="true"
         >
           {currentSize}px
@@ -116,18 +139,13 @@ export const BoardControls: React.FC<BoardControlsProps> = ({
       </div>
 
       {/* Mode Controls: Focus & Fullscreen */}
-      <div className="flex items-center gap-1 sm:gap-1.5">
-        <div className="h-4 w-px bg-slate-800 mx-0.5" aria-hidden="true" />
+      <div className="board-mode-tools">
 
         {/* Focus Board Toggle */}
-        <button
+        {onToggleFocusBoard && <button
           type="button"
           onClick={onToggleFocusBoard}
-          className={`flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold transition-colors ${
-            focusBoard
-              ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 shadow-sm shadow-indigo-500/10'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-transparent'
-          }`}
+          className="board-tool"
           aria-label={focusBoard ? 'Exit focus board mode' : 'Focus board (collapse sidebar)'}
           aria-pressed={focusBoard}
           title={focusBoard ? 'Exit focus mode (restore sidebar)' : 'Focus board (expand board, collapse sidebar)'}
@@ -149,18 +167,14 @@ export const BoardControls: React.FC<BoardControlsProps> = ({
             )}
           </svg>
           <span className="hidden sm:inline">Focus</span>
-        </button>
+        </button>}
 
         {/* Fullscreen Toggle */}
         {isFullscreenSupported && (
           <button
             type="button"
             onClick={onToggleFullscreen}
-            className={`flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold transition-colors ${
-              isFullscreen
-                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm shadow-amber-500/10'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-transparent'
-            }`}
+            className="board-tool"
             aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
             aria-pressed={isFullscreen}
             title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
@@ -193,7 +207,7 @@ export const BoardControls: React.FC<BoardControlsProps> = ({
         >
           <div className="flex items-center gap-1.5 min-w-0">
             <span aria-hidden="true" className="shrink-0">⚠️</span>
-            <span className="truncate">{fullscreenError}</span>
+            <span>{fullscreenError}</span>
           </div>
           {onClearFullscreenError && (
             <button

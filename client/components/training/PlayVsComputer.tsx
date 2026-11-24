@@ -10,10 +10,11 @@ import type {
 import type { GameResult, PlayerColor, PromotionPiece } from '../../../shared/types.js';
 import { Chessboard } from '../Chessboard.js';
 import { ResponsiveBoardFrame } from '../ResponsiveBoardFrame.js';
-import { BoardControls } from '../BoardControls.js';
+import { BoardDisplayControls } from '../BoardControls.js';
 import { BoardReplayControls } from '../BoardReplayControls.js';
 import { computeReplayState } from '../../services/live-game-replay.js';
 import { useBoardDisplay } from '../../services/board-display.js';
+import { useModalBehavior } from '../../utils/modal-behavior.js';
 import { PlayerCard } from '../PlayerCard.js';
 import { MoveHistory } from '../MoveHistory.js';
 import { PromotionModal } from '../PromotionModal.js';
@@ -41,6 +42,7 @@ import {
 import type { SavedGame } from '../../services/game-history.js';
 
 interface PlayVsComputerProps {
+  preferredColor?: 'w' | 'b' | 'random';
   initialConfig: ComputerGameConfig;
   theme: BoardTheme;
   pieceSet: PieceSetId;
@@ -54,6 +56,7 @@ interface PlayVsComputerProps {
 }
 
 export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
+  preferredColor = 'random',
   initialConfig,
   theme,
   pieceSet,
@@ -68,7 +71,10 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
   const [controller, setController] = useState<ComputerGameController | null>(null);
   const [gameState, setGameState] = useState<ComputerGameState | null>(null);
   const [replayPly, setReplayPly] = useState<number | null>(null);
-  const [flipped, setFlipped] = useState(initialConfig.colorChoice === 'b');
+  const [flipOverride, setFlipOverride] = useState(false);
+  const bottomOrientation = preferredColor === 'random' ? gameState?.humanColor : preferredColor;
+  const flipped = (bottomOrientation === 'b') !== flipOverride;
+  useEffect(() => { setFlipOverride(false); }, [preferredColor, gameState?.humanColor]);
   const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
   const [premove, setPremove] = useState<{ from: Square; to: Square } | null>(null);
   const [pendingPromotion, setPendingPromotion] = useState<{ from: Square; to: Square } | null>(null);
@@ -80,7 +86,9 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
     action: () => void;
   } | null>(null);
 
+  const resultRef = useModalBehavior(null, false, gameState?.status === 'finished');
   const boardDisplay = useBoardDisplay();
+  const drawerRef = useModalBehavior(boardDisplay.closeFocusDrawer, true, boardDisplay.focusBoard && boardDisplay.isFocusDrawerOpen);
   const [measuredBoard, setMeasuredBoard] = useState({
     currentSize: 560,
     fitSize: 560,
@@ -337,8 +345,8 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
   const diffConfig = DIFFICULTY_CONFIGS[gameState.difficulty];
   const engineDisplayName = `Stockfish (${diffConfig.name})`;
 
-  const topColor: PlayerColor = flipped ? gameState.humanColor : gameState.computerColor;
-  const bottomColor: PlayerColor = flipped ? gameState.computerColor : gameState.humanColor;
+  const topColor: PlayerColor = flipped ? 'w' : 'b';
+  const bottomColor: PlayerColor = flipped ? 'b' : 'w';
 
   const topName = topColor === gameState.humanColor ? initialConfig.playerName : engineDisplayName;
   const bottomName = bottomColor === gameState.humanColor ? initialConfig.playerName : engineDisplayName;
@@ -373,7 +381,7 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
             )}
           </div>
           <h1 className="mt-0.5 text-2xl font-black tracking-tight text-white sm:text-3xl">
-            LAN CHESS
+            LAN Chess
           </h1>
         </div>
 
@@ -388,7 +396,7 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
 
           <button
             type="button"
-            onClick={() => setFlipped((f) => !f)}
+            onClick={() => setFlipOverride((f) => !f)}
             className="action-button action-secondary px-2.5 py-1 text-xs"
             title="Flip board perspective"
           >
@@ -409,7 +417,7 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
             className="action-button action-secondary px-2.5 py-1 text-xs"
             title="Settings & Themes"
           >
-            ⚙️
+            Settings
           </button>
 
           <button
@@ -449,28 +457,17 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
 
       {/* Main Grid: Board Column + Move History Column */}
       <div
-        className={`grid gap-4 lg:gap-6 ${
+        className={`grid grid-cols-1 gap-4 lg:gap-6 ${
           boardDisplay.focusBoard ? 'lg:grid-cols-1' : 'lg:grid-cols-[minmax(0,1fr)_22rem]'
         } lg:items-start`}
       >
         {/* Left Column: Board & Player Panels */}
         <section className={`mx-auto w-full ${boardDisplay.focusBoard ? 'max-w-none' : 'max-w-[46rem]'}`}>
-          {/* Top Player Card */}
-          <div
-            className="mx-auto w-full mb-1.5 sm:mb-2"
-            style={{ maxWidth: measuredBoard.currentSize ? `${measuredBoard.currentSize}px` : undefined }}
-          >
-            <PlayerCard
-              name={topName}
-              color={topColor}
-              isTurn={gameState.turn === topColor && gameState.status === 'active'}
-              timeMs={topTimeMs}
-              capturedPieces={topCaptured}
-              advantage={topAdvantage}
-              isLocalPlayer={topColor === gameState.humanColor}
-            />
-          </div>
-
+          {boardDisplay.focusBoard && (
+            <div className="focus-board-tools">
+              <BoardDisplayControls display={boardDisplay} measure={measuredBoard} />
+            </div>
+          )}
           {/* Status banner */}
           <div
             className="mx-auto w-full mb-1.5 sm:mb-2 flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/90 px-3 py-1.5 text-xs"
@@ -503,27 +500,19 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
             <span className="font-mono text-slate-400">Move {moveNumber}</span>
           </div>
 
-          {/* Board Controls Toolbar */}
+          {/* Top Player Card */}
           <div
-            className="mx-auto w-full"
+            className="mx-auto w-full mb-1.5 sm:mb-2"
             style={{ maxWidth: measuredBoard.currentSize ? `${measuredBoard.currentSize}px` : undefined }}
           >
-            <BoardControls
-              sizeMode={boardDisplay.sizeMode}
-              currentSize={measuredBoard.currentSize}
-              fitSize={measuredBoard.fitSize}
-              maxAllowedWidth={measuredBoard.maxAllowedWidth}
-              focusBoard={boardDisplay.focusBoard}
-              isFullscreen={boardDisplay.isFullscreen}
-              isFullscreenSupported={boardDisplay.isFullscreenSupported}
-              fullscreenError={boardDisplay.fullscreenError}
-              onClearFullscreenError={boardDisplay.clearFullscreenError}
-              onSetSizeMode={boardDisplay.setSizeMode}
-              onCustomSizeChange={boardDisplay.setCustomSize}
-              onStepSize={(delta) => boardDisplay.stepCustomSize(delta, measuredBoard.currentSize)}
-              onResetToFit={boardDisplay.resetToFit}
-              onToggleFocusBoard={boardDisplay.toggleFocusBoard}
-              onToggleFullscreen={boardDisplay.toggleFullscreen}
+            <PlayerCard
+              name={topName}
+              color={topColor}
+              isTurn={gameState.turn === topColor && gameState.status === 'active'}
+              timeMs={topTimeMs}
+              capturedPieces={topCaptured}
+              advantage={topAdvantage}
+              isLocalPlayer={topColor === gameState.humanColor}
             />
           </div>
 
@@ -552,16 +541,7 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
               onPieceDrop={handlePieceDrop}
             />
           </ResponsiveBoardFrame>
-          <BoardReplayControls
-            viewedPly={viewedPly}
-            moveCount={moveCount}
-            isViewingHistory={isViewingHistory}
-            viewedMoveLabel={viewedMoveLabel}
-            onPrevious={viewPreviousMove}
-            onNext={() => setReplayPly(viewedPly + 1 >= moveCount ? null : viewedPly + 1)}
-            onLive={() => setReplayPly(null)}
-            maxWidth={measuredBoard.currentSize}
-          />
+
 
           {/* Bottom Player Card */}
           <div
@@ -579,28 +559,27 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
             />
           </div>
 
-          {/* Resign action button */}
-          {gameState.status === 'active' && (
-            <div
-              className="mx-auto w-full mt-2 sm:mt-3 flex gap-2"
-              style={{ maxWidth: measuredBoard.currentSize ? `${measuredBoard.currentSize}px` : undefined }}
-            >
-              <button
-                type="button"
-                onClick={handleResign}
-                className="action-button action-secondary flex-1 text-xs text-rose-300 hover:border-rose-800 hover:text-rose-200"
-              >
-                Resign Game
-              </button>
-            </div>
-          )}
+          <BoardReplayControls
+            viewedPly={viewedPly}
+            moveCount={moveCount}
+            isViewingHistory={isViewingHistory}
+            viewedMoveLabel={viewedMoveLabel}
+            onPrevious={viewPreviousMove}
+            onNext={() => setReplayPly(viewedPly + 1 >= moveCount ? null : viewedPly + 1)}
+            onLive={() => setReplayPly(null)}
+            maxWidth={measuredBoard.currentSize}
+          />
         </section>
 
         {/* Right Column: Move History & Game Information (or Slide-over Drawer in Focus Mode) */}
         <aside
+          ref={drawerRef}
+          role={boardDisplay.focusBoard ? 'dialog' : undefined}
+          aria-modal={boardDisplay.focusBoard && boardDisplay.isFocusDrawerOpen || undefined}
+          inert={boardDisplay.focusBoard && !boardDisplay.isFocusDrawerOpen}
           className={
             boardDisplay.focusBoard
-              ? `fixed inset-y-0 right-0 z-40 w-88 max-w-[90vw] bg-slate-950/95 border-l border-slate-800 shadow-2xl p-4 overflow-y-auto space-y-3 transition-transform duration-200 backdrop-blur-md ${
+              ? `fixed inset-y-0 right-0 z-40 w-[22rem] max-w-[90vw] bg-slate-950/95 border-l border-slate-800 shadow-2xl p-4 overflow-y-auto space-y-3 transition-transform duration-200 backdrop-blur-md ${
                   boardDisplay.isFocusDrawerOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none'
                 }`
               : 'space-y-3 lg:max-h-[calc(100dvh-5.5rem)] lg:overflow-y-auto lg:pr-1'
@@ -620,16 +599,24 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
               </button>
             </div>
           )}
+          {!boardDisplay.focusBoard && <BoardDisplayControls display={boardDisplay} measure={measuredBoard} />}
+          {/* Resign action button */}
+          {gameState.status === 'active' && (
+            <div className="match-actions" onClick={boardDisplay.closeFocusDrawer}>
+              <button
+                type="button"
+                onClick={handleResign}
+                className="action-button action-secondary flex-1 text-xs text-rose-300 hover:border-rose-800 hover:text-rose-200"
+              >
+                Resign Game
+              </button>
+            </div>
+          )}
           <MoveHistory moves={gameState.moves} />
 
           {/* Offline Information Box */}
-          <div className="panel space-y-2 text-xs text-slate-400">
-            <h3 className="font-bold text-slate-300 uppercase tracking-wider text-[11px]">
-              Offline Chess Workstation
-            </h3>
-            <p>
-              Stockfish runs locally inside your browser via WebAssembly with zero network overhead.
-            </p>
+          <div className="panel space-y-2 text-sm text-slate-400">
+            <h3 className="font-semibold text-slate-200">Match settings</h3>
             <div className="pt-2 border-t border-slate-800 space-y-1">
               <div className="flex justify-between">
                 <span>Difficulty:</span>
@@ -676,6 +663,7 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
       {pendingPromotion && (
         <PromotionModal
           color={gameState.humanColor}
+          pieceSet={pieceSet}
           onSelect={handleExecutePromotion}
           onCancel={() => setPendingPromotion(null)}
         />
@@ -701,18 +689,11 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4"
           role="dialog"
-          aria-modal="true"
+          aria-modal="true" aria-labelledby="computer-result-title"
         >
-          <div className="panel w-full max-w-md border-amber-400/40 bg-slate-900/95 p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
+          <div ref={resultRef} tabIndex={-1} className="panel w-full max-w-md border-amber-400/40 bg-slate-900/95 p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
             <div className="text-center">
-              <span className="text-4xl mb-2 inline-block">
-                {gameState.winner === gameState.humanColor
-                  ? '🏆'
-                  : gameState.winner === 'draw'
-                  ? '🤝'
-                  : '🤖'}
-              </span>
-              <h2 className="text-2xl font-black text-white">
+              <h2 id="computer-result-title" className="text-2xl font-black text-white">
                 {gameState.winner === gameState.humanColor
                   ? 'Victory!'
                   : gameState.winner === 'draw'
@@ -737,7 +718,7 @@ export const PlayVsComputer: React.FC<PlayVsComputerProps> = ({
                   }}
                   className="action-button action-primary w-full text-sm font-bold flex items-center justify-center gap-2"
                 >
-                  <span>🔍</span>
+
                   <span>Review Game with Stockfish</span>
                 </button>
               )}

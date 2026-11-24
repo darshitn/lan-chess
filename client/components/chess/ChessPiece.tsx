@@ -1,4 +1,5 @@
 import React from 'react';
+import { GlassPiece } from './GlassPiece.js';
 import type { PlayerColor } from '../../../shared/types.js';
 import type { PieceSetId } from '../../types/preferences.js';
 
@@ -11,6 +12,17 @@ export interface ChessPieceProps {
   className?: string;
   style?: React.CSSProperties;
 }
+
+// Cut silhouettes leave a clear profile at phone-board sizes. Each piece has
+// a separate outline so the geometric sets also work without color cues.
+const geometricProfiles: Record<PieceSymbol, string> = {
+  p: 'M12 37h21l-2-5-5-3-1-8a6 6 0 1 0-5 0l-1 8-5 3z',
+  n: 'M9 37h28l-2-12-2-10-7-8-5-2 1 6-7 2-8 10 5 5 9-6-2 8-7 3z',
+  b: 'M10 37h25l-2-5-7-3-1-6c7-5 5-11-1-16l-2-3-3 6 4 6-2 2-4-5c-5 7-2 10 2 12l-2 5-5 2z',
+  r: 'M9 37h27l-2-5-5-2-1-13 5-4V6h-5v5h-4V6h-4v5h-4V6h-5v7l5 4-1 13-4 2z',
+  q: 'M8 37h29l-2-5-4-2 5-19-9 8-5-13-5 13-9-8 5 19-3 2z',
+  k: 'M10 37h25l-2-5-5-3 1-9 4-7-8 2V9h4V6h-4V2h-4v4h-4v3h4v6l-8-2 4 7 1 9-6 3z',
+};
 
 export const PIECE_UNICODE_FALLBACK: Record<PlayerColor, Record<PieceSymbol, string>> = {
   w: { p: '♙', n: '♘', b: '♗', r: '♖', q: '♕', k: '♔' },
@@ -36,6 +48,21 @@ export const ChessPiece: React.FC<ChessPieceProps> = React.memo(({
   // If piece set is modern/minimal/glass/wood/neon/cyber, we can style the SVG with classes
   const colorClass = isWhite ? 'piece-svg-w' : 'piece-svg-b';
   const combinedClass = `chess-piece-svg ${colorClass} pieceset-piece-${pieceSet} ${className}`.trim();
+
+  if (pieceSet === 'glass') {
+    return <GlassPiece type={type} color={color} className={combinedClass} style={style} />;
+  }
+
+  if (pieceSet === 'modern' || pieceSet === 'minimal' || pieceSet === 'silhouette' || pieceSet === 'cyber') {
+    return (
+      <svg viewBox="0 0 45 45" className={combinedClass} style={style} aria-hidden="true" focusable="false">
+        <path d={geometricProfiles[type]} className="piece-profile" strokeLinejoin={pieceSet === 'minimal' ? 'round' : 'miter'} />
+        {(pieceSet === 'modern' || pieceSet === 'cyber') && (
+          <path d="M14 32h17" className="piece-engraving" fill="none" strokeWidth="1.7" />
+        )}
+      </svg>
+    );
+  }
 
   switch (type) {
     case 'k':
@@ -132,22 +159,14 @@ export const ChessPiece: React.FC<ChessPieceProps> = React.memo(({
       );
 
     case 'n':
-      return isWhite ? (
+      return (
         <svg viewBox="0 0 45 45" className={combinedClass} style={style} aria-hidden="true" focusable="false">
-          <g fill="none" fillRule="evenodd" stroke="#1c1917" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M22 10c10.5 1 16.5 8 16 29H15c0-9 10-6.5 8-21" fill="#fdfbf7" />
-            <path d="M24 18c.38 2.91-5.55 7.37-8 9-3 2-2.82 4.34-5 4-1.042-.94 1.41-3.04 0-3-1 0-.64 1.47-1 3-1.65 1.35-2.48.74-4 2-1.5 1.5-1 3-1 3 2.5-1.5 4.5 1.5 7 1 2.5-.5 3-3.5 3-3.5.5-2 1-3.5 1.5-4.5.5-1 1-1.5 1.5-2.5.5-1 2-2 2-3s1-2.5 2-2.5" fill="#fdfbf7" />
-            <path d="M9.5 25.5a.5.5 0 1 1-1 0 .5.5 0 1 1 1 0zm5.5 4a.5.5 0 1 1-1 0 .5.5 0 1 1 1 0z" fill="#1c1917" stroke="#1c1917" />
-            <path d="M24.55 10.4s-.45 1.45-1.55 1.7c-1.07.24-2.18-.5-2.4-1.42M14.5 16.2c.4 1.5 2.1 2.6 3.6 1.8" stroke="#1c1917" />
-          </g>
-        </svg>
-      ) : (
-        <svg viewBox="0 0 45 45" className={combinedClass} style={style} aria-hidden="true" focusable="false">
-          <g fill="none" fillRule="evenodd" stroke="#18181b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M22 10c10.5 1 16.5 8 16 29H15c0-9 10-6.5 8-21" fill="#262629" />
-            <path d="M24 18c.38 2.91-5.55 7.37-8 9-3 2-2.82 4.34-5 4-1.042-.94 1.41-3.04 0-3-1 0-.64 1.47-1 3-1.65 1.35-2.48.74-4 2-1.5 1.5-1 3-1 3 2.5-1.5 4.5 1.5 7 1 2.5-.5 3-3.5 3-3.5.5-2 1-3.5 1.5-4.5.5-1 1-1.5 1.5-2.5.5-1 2-2 2-3s1-2.5 2-2.5" fill="#262629" />
-            <path d="M9.5 25.5a.5.5 0 1 1-1 0 .5.5 0 1 1 1 0zm5.5 4a.5.5 0 1 1-1 0 .5.5 0 1 1 1 0z" fill="#f4f4f5" stroke="#f4f4f5" />
-            <path d="M24.55 10.4s-.45 1.45-1.55 1.7c-1.07.24-2.18-.5-2.4-1.42M14.5 16.2c.4 1.5 2.1 2.6 3.6 1.8" stroke="#f4f4f5" />
+          <g stroke={isWhite ? '#1c1917' : '#18181b'} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round">
+            <path fill={isWhite ? '#fdfbf7' : '#262629'}
+              d="M9 36c.8-5.4 4-9 8.4-12.1l3.2-3.8-6.1 3.7-2.3-.4-3.7 1.3-3.1-3.6 7-9.1 4.8-3.4.6-5.1 3.7 3.8 3.2-3.1.7 4.8c8.3 5.2 10.8 15.3 10.8 27z" />
+            <path d="M25 11.3c4.3 4.1 6.7 11 7.2 18.1M13.6 15.4l2.4-1.6M8.5 21.1l1.4-1"
+              stroke={isWhite ? '#38352c' : '#e2e0da'} fill="none" />
+            <path d="M9 35.4h26.5l2.2 3.7H7.1z" fill={isWhite ? '#fdfbf7' : '#262629'} />
           </g>
         </svg>
       );

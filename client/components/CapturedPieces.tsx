@@ -14,7 +14,7 @@ interface CapturedPiecesProps {
 
 export const CapturedPieces: React.FC<CapturedPiecesProps> = React.memo(({ pieces, color, advantage }) => {
   if (pieces.length === 0 && !advantage) {
-    return <div className="captured-pieces min-h-[1.5rem]" />;
+    return null;
   }
 
   return (
