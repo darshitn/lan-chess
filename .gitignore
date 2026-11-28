@@ -29,3 +29,6 @@ release/
 
 # test screenshots and local artifacts
 artifacts/
+
+# Local installer staged for the marketing preview
+/site/downloads/

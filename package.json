@@ -6,6 +6,7 @@
   "type": "module",
   "description": "",
   "scripts": {
+    "site:css": "tailwindcss -c site/tailwind.config.cjs -i site/input.css -o site/styles.css",
     "dev": "concurrently -k -n server,client -c blue,magenta \"npm run dev:server\" \"npm run dev:client\"",
     "dev:client": "vite --host 0.0.0.0",
     "dev:server": "npm run build:server && concurrently -k -n types,server -c yellow,blue \"tsc -p tsconfig.server.json --watch\" \"node --watch dist/server/server/index.js\"",

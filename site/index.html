@@ -1,56 +1,136 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="sea-glass">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>LAN Chess — Chess across the table</title>
-  <meta name="description" content="Host a chess match on your Wi-Fi. Friends join in a browser. Play offline against Stockfish, solve tactics and review your games.">
-  <meta name="theme-color" content="#f6f2e9"><meta property="og:title" content="LAN Chess — Chess across the table">
-  <meta property="og:description" content="Two devices, one local chess match."><meta property="og:type" content="website">
-  <link rel="icon" href="assets/icon.png"><link rel="stylesheet" href="styles.css"><script defer src="script.js"></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f1faf8">
+  <title>LAN Chess — Sea Glass</title>
+  <meta name="description" content="Host a chess game on your Wi-Fi. Friends join from their browser. Download LAN Chess for Windows or try the universal Mac preview.">
+  <meta property="og:title" content="LAN Chess — Chess in good company">
+  <meta property="og:image" content="assets/sea-glass/hero.jpg">
+  <link rel="icon" href="assets/icon.png">
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="script.js"></script>
 </head>
 <body id="top">
-<a class="skip" href="#main">Skip to content</a>
-<header class="mast wrap"><a class="brand" href="#top"><i class="mark" aria-hidden="true"></i>LAN Chess</a>
-<nav aria-label="Main navigation"><a href="#how-lan-works">How to play</a><a href="#features">Game modes</a><a href="#faq">FAQ</a></nav>
-<a class="pill dark" href="#download">Get the app <span aria-hidden="true">↗</span></a></header>
-<main id="main">
-<section class="hero wrap"><div class="intro">
-<p class="label"><i class="signal" aria-hidden="true"></i> Local multiplayer chess</p>
-<h1>Chess across<br><em>the table.</em></h1>
-<p class="lede">Turn your Wi-Fi into a chess club. Host a game on your computer and invite a friend to play from their browser.</p>
-<div class="actions"><a class="pill red" href="#download">Download LAN Chess <span aria-hidden="true">↓</span></a><button class="watch" id="watch"><b aria-hidden="true">▷</b> Watch demo</button></div>
-<small>Windows x64 <span> / </span> macOS preview</small></div>
-<figure class="portrait"><img src="assets/club-knight.jpg" fetchpriority="high" alt="A carved ivory knight flanked by a dark rook and pawn on a sunlit chessboard"></figure></section>
-<div class="contents wrap"><a href="#how-lan-works">Local multiplayer <span>↘</span></a><a href="#features" data-target-view="engine">Offline Stockfish <span>↘</span></a><a href="#offline-ai">1,320 tactical puzzles <span>↘</span></a></div>
-<section class="spread wrap" id="how-lan-works"><div><p class="label">Local multiplayer</p><h2>From Wi-Fi to<br><em>first move.</em></h2>
-<ol class="steps"><li><h3>Set the clock</h3><p>Pick a time control and create a room on your computer.</p></li><li><h3>Share the invite</h3><p>Send the room link or let your opponent scan the QR code on the same Wi-Fi.</p></li><li><h3>Take your seats</h3><p>Your guest joins in a browser. Only the host needs the app.</p></li></ol></div>
-<figure class="shot">
-  <div class="host-scenes">
-    <img class="room-scene" src="assets/waiting-room.png" loading="lazy" alt="The waiting room displays the board, room code and QR invite">
-    <img class="lobby-scene" src="assets/desktop-lobby.png" loading="lazy" alt="Lobby with time controls for a new room">
-    <img class="match-scene" src="assets/active-match.png" loading="lazy" alt="A match in progress with clocks and move history">
-  </div>
-  <figcaption>Hosting a match <span>App preview</span></figcaption>
-</figure></section>
-<section class="tour" id="features"><div class="wrap"><p class="label">Game modes</p><div class="tour-head"><h2>At the <em>board.</em></h2>
-<div class="choices" role="group" aria-label="Explore game modes"><button data-view="match" aria-pressed="true">Match play</button><button data-view="focus" aria-pressed="false">Focus mode</button><button data-view="engine" aria-pressed="false">Solo practice</button></div></div>
-<figure aria-live="polite"><img id="screen" src="assets/active-match.png" loading="lazy" alt="A LAN match with clocks and move history"><figcaption id="caption">Follow the clocks, queue a premove and replay the action while the match continues.</figcaption></figure></div></section>
-<section class="spread finishes wrap"><div><p class="label">Board workshop</p><h2>Same position.<br><em>Different feel.</em></h2><p class="lede">Drag across the board to compare Sea Glass and Walnut in the Italian Game.</p></div><figure class="finish-study">
-    <div class="finish-title"><strong>Finish comparison</strong><span>Italian Game &middot; 3.Bc4</span></div>
-    <div class="finish-board" style="--split:58%">
-      <img src="assets/finish-walnut.png" width="586" height="586" alt="Italian Game opening with Walnut pieces and board">
-      <img class="finish-overlay" src="assets/finish-glass.png" width="586" height="586" alt="The same position in Sea Glass">
-      <span class="finish-divider" aria-hidden="true"><i>&lsaquo;&nbsp;&rsaquo;</i></span>
-      <input id="finish-split" type="range" min="0" max="100" value="58" aria-label="Compare Sea Glass and Walnut finishes" aria-valuetext="58 percent Sea Glass" aria-describedby="finish-help">
+  <svg class="symbols" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg"><defs>
+    <symbol id="i-checker" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M2 2h7v7H2zm14 0h7v7h-7zM9 9h7v7H9zM2 16h7v7H2zm14 0h7v7h-7z"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m-4-4 4 4 4-4M5 16v4h14v-4"/></symbol>
+    <symbol id="i-diagonal" viewBox="0 0 24 24"><path d="M5 19 18 6M7 6h11v11"/></symbol>
+    <symbol id="i-win" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M2 3h9v9H2zm11 0h9v9h-9zM2 14h9v9H2zm11 0h9v9h-9z"/></symbol>
+    <symbol id="i-mac" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M16.7 1.1c.2 1.4-.5 2.9-1.4 3.9-.9 1-2.1 1.7-3.4 1.6-.2-1.3.5-2.7 1.4-3.7.9-1 2.3-1.7 3.4-1.8ZM20.5 8.2c-2.5 1.5-2.6 5.6.4 7.2-.5 1.7-1.4 3.4-2.5 4.8-.9 1.1-1.7 2.1-3 2.1-1.1 0-1.7-.7-3.2-.7s-2.3.7-3.3.7c-1.2 0-2.1-1-3-2.2C2.7 16 2.5 10.6 4.4 8.3 5.5 7 7 6.2 8.7 6.2c1.3 0 2.5.8 3.5.8s2.2-.9 3.9-.9c1.7 0 3.2.8 4.4 2.1Z"/></symbol>
+    <symbol id="i-expand" viewBox="0 0 24 24"><path d="M14 4h6v6M4 14v6h6m10-16-6 6M4 20l6-6"/></symbol>
+    <filter id="ripple-glass" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="turbulence" baseFrequency=".019 .035" numOctaves="2" seed="3" result="waves"/>
+      <feDisplacementMap in="SourceGraphic" in2="waves" scale="27" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+  </defs></svg>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="mast">
+    <div class="wrap flex items-center justify-between gap-4">
+      <a class="brand inline-flex items-center gap-2.5" href="#top" aria-label="LAN Chess home"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-checker"/></svg>LAN Chess</a>
+      <nav aria-label="Main navigation" class="hidden md:flex items-center gap-8">
+        <a href="#play">Game modes</a><a href="#setup">How to play</a>
+      </nav>
+      <a class="nav-get inline-flex items-center gap-2" href="#download">Get LAN Chess <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-download"/></svg></a>
     </div>
-    <figcaption><strong>Sea Glass</strong><span id="finish-help">Slide to compare</span><strong>Walnut</strong></figcaption>
-  </figure></section>
-<section class="spread faq wrap" id="faq"><div><p class="label">Frequently asked questions</p><h2>Before <em>you play.</em></h2></div><div>
-<details open><summary>Do we need internet access?</summary><p>Download the app first. After that, the host and guests can play on the same local network even when the internet is down.</p></details>
-<details><summary>Does everyone need the app?</summary><p>Only the host installs LAN Chess. Guests open the room link on a phone, tablet or laptop.</p></details>
-<details id="offline-ai"><summary>What can I play on my own?</summary><p>Play against Stockfish, solve 1,320 rated tactics or review saved games move by move with engine analysis. All three work offline.</p></details>
-<details><summary>What if my friend can’t join?</summary><p>Connect both devices to the same network and allow LAN Chess to accept incoming connections. Some guest Wi-Fi networks isolate devices from one another.</p></details></div></section>
-<section id="download" class="finale"><div class="wrap"><div><p class="label">Download LAN Chess · v1.2.4</p><h2>Set the <em>board.</em></h2></div><div><div class="actions"><a class="pill light" href="https://github.com/darshitn/lan-chess/releases/download/v1.2.4/LAN-Chess-Setup-1.2.4.exe">Windows x64 <span>↓</span></a><a class="pill outline" href="https://github.com/darshitn/lan-chess/actions/runs/45443792966/artifacts/14946070653">macOS preview <span>↗</span></a></div><small>Mac preview requires GitHub sign-in. The app is ad-hoc signed.</small></div></div></section>
-</main><footer class="wrap"><a class="brand" href="#top"><i class="mark" aria-hidden="true"></i>LAN Chess</a><a href="https://github.com/darshitn/lan-chess">GitHub ↗</a><a href="https://github.com/darshitn/lan-chess/releases">Release notes ↗</a></footer>
-<dialog id="demo" aria-labelledby="demo-title"><div class="modal-head"><h2 id="demo-title">Sea Glass in play</h2><button id="close" aria-label="Close demo">×</button></div><video controls playsinline preload="none" src="assets/demo.mp4" poster="assets/active-match.png"></video></dialog>
-</body></html>
+  </header>
+  <main id="main">
+    <section class="wrap hero" aria-labelledby="hero-title">
+      <div class="intro">
+        <p class="kicker flex items-center gap-2.5"><span class="signal"></span> Local multiplayer chess</p>
+        <h1 id="hero-title">Chess in<br><em>good company.</em></h1>
+        <p class="lead">One computer hosts. A friend joins from their phone or laptop. All you need is the same Wi-Fi.</p>
+        <div class="actions flex flex-wrap gap-2.5">
+          <a class="action primary" href="https://github.com/darshitn/lan-chess/releases/download/v1.2.4/LAN-Chess-Setup-1.2.4.exe"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-win"/></svg>Download for Windows</a>
+          <a class="action secondary" href="downloads/LAN-Chess-1.2.4-mac-universal.dmg" download><svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-mac"/></svg>Download for macOS</a>
+        </div>
+        <p class="release">v1.2.4 <span>·</span> Windows x64 <span>·</span> Mac universal preview</p>
+      </div>
+      <figure class="exhibit">
+        <div class="art-window">
+          <div id="liquid" class="photo">
+            <img src="assets/sea-glass/hero-660.jpg" srcset="assets/sea-glass/hero-660.jpg 660w, assets/sea-glass/hero.jpg 1254w" sizes="(min-width: 850px) 46vw, 95vw" width="1254" height="1254" fetchpriority="high" alt="A sea-glass knight between a smoked-glass pawn and rook on a mist and teal chessboard">
+          </div>
+        </div>
+      </figure>
+    </section>
+    <section id="play" class="play-section">
+      <div class="wrap">
+        <div class="section-heading flex flex-wrap items-end justify-between gap-5">
+          <h2>Ways to <em>play.</em></h2>
+          <div class="mode-tabs flex flex-wrap" role="tablist" aria-label="Game modes" hidden>
+            <button role="tab" id="tab-room" aria-selected="true" aria-controls="panel-room" tabindex="0">Local multiplayer</button>
+            <button role="tab" id="tab-engine" aria-selected="false" aria-controls="panel-engine" tabindex="-1">Offline practice</button>
+            <button role="tab" id="tab-puzzles" aria-selected="false" aria-controls="panel-puzzles" tabindex="-1">Tactical puzzles</button>
+          </div>
+        </div>
+        <article class="mode-panel" id="panel-room" aria-label="Local multiplayer">
+          <div class="mode-copy">
+            <div aria-hidden="true" class="mode-piece">♞</div>
+            <p class="kicker">Local multiplayer</p>
+            <h3>Give your next game a home advantage.</h3>
+            <p>Create a room on your computer, then share its link or QR code. Your opponent joins from any browser on the same Wi-Fi.</p>
+            <a class="text-link" href="assets/sea-glass/match.jpg" data-zoom="Desktop match">View screenshot <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-diagonal"/></svg></a>
+          </div>
+          <a class="screen" href="assets/sea-glass/match.jpg" data-zoom="Desktop match" aria-label="Enlarge Desktop match">
+            <span class="screen-bar"><span class="window-dots" aria-hidden="true">● ● ●</span><span>LAN Chess / Desktop match</span><svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-expand"/></svg></span>
+            <img loading="lazy" src="assets/sea-glass/match.jpg" alt="White’s view of a local match in LAN Chess" width="1320" height="860">
+          </a>
+        </article>
+        <article class="mode-panel" id="panel-engine" aria-label="Offline practice">
+          <div class="mode-copy">
+            <div aria-hidden="true" class="mode-piece">♜</div>
+            <p class="kicker">Offline practice</p>
+            <h3>Take on Stockfish.</h3>
+            <p>Set the engine to one of five difficulty levels and play at your own pace. The engine runs on your computer, even offline.</p>
+            <a class="text-link" href="assets/sea-glass/stockfish.jpg" data-zoom="Stockfish match">View screenshot <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-diagonal"/></svg></a>
+          </div>
+          <a class="screen" href="assets/sea-glass/stockfish.jpg" data-zoom="Stockfish match" aria-label="Enlarge Stockfish match">
+            <span class="screen-bar"><span class="window-dots" aria-hidden="true">● ● ●</span><span>LAN Chess / Stockfish match</span><svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-expand"/></svg></span>
+            <img loading="lazy" src="assets/sea-glass/stockfish.jpg" alt="A game against Stockfish on the selected board" width="1320" height="860">
+          </a>
+        </article>
+        <article class="mode-panel" id="panel-puzzles" aria-label="Tactical puzzles">
+          <div class="mode-copy">
+            <div aria-hidden="true" class="mode-piece">♟</div>
+            <p class="kicker">Tactical puzzles</p>
+            <h3>Find the move.</h3>
+            <p>Work through 1,320 tactical positions. Ask for a hint when you need one, then replay the position to explore another line.</p>
+            <a class="text-link" href="assets/sea-glass/puzzle.jpg" data-zoom="Puzzle board">View screenshot <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-diagonal"/></svg></a>
+          </div>
+          <a class="screen" href="assets/sea-glass/puzzle.jpg" data-zoom="Puzzle board" aria-label="Enlarge Puzzle board">
+            <span class="screen-bar"><span class="window-dots" aria-hidden="true">● ● ●</span><span>LAN Chess / Puzzle board</span><svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-expand"/></svg></span>
+            <img loading="lazy" src="assets/sea-glass/puzzle.jpg" alt="A tactical puzzle in the LAN Chess trainer" width="1320" height="860">
+          </a>
+        </article>
+      </div>
+    </section>
+    <section id="setup" class="wrap setup">
+      <div class="setup-title"><p class="kicker">Room setup</p><h2>Take a <em>seat.</em></h2></div>
+      <div class="steps">
+        <details open><summary><span class="step-no">01</span>Host a room<span class="plus" aria-hidden="true"></span></summary>
+          <p>Open LAN Chess on Windows or Mac. Choose a clock and select Create Game.<br><a class="text-link" href="assets/sea-glass/host.jpg" data-zoom="Create a room" data-alt="The host’s clock options and Create Game button">View room settings ↗</a></p></details>
+        <details><summary><span class="step-no">02</span>Invite a friend<span class="plus" aria-hidden="true"></span></summary>
+          <p>Share the room link or let your friend scan the QR code from the waiting room.<br><a class="text-link" href="assets/sea-glass/invite.jpg" data-zoom="Example invitation" data-alt="Sample invitation for room BCLZ. The QR code encodes the example link https://chess.example/?room=BCLZ.">View an example invite ↗</a></p></details>
+        <details><summary><span class="step-no">03</span>Make your move<span class="plus" aria-hidden="true"></span></summary>
+          <p>Your friend opens the invite on the same Wi-Fi. Their phone or laptop becomes the other side of the board.<br><a class="text-link" href="assets/sea-glass/guest.jpg" data-zoom="The guest’s view" data-alt="The match on a guest’s phone with Black’s pieces nearest the player">View the guest’s screen ↗</a></p></details>
+      </div>
+    </section>
+    <section id="download" class="download">
+      <div class="wrap install-layout">
+        <div><p class="kicker">LAN Chess · v1.2.4</p><h2>Bring a <em>friend.</em></h2><p>Install on the host computer. Guests join in a browser.</p></div>
+        <div class="install-list">
+          <a href="https://github.com/darshitn/lan-chess/releases/download/v1.2.4/LAN-Chess-Setup-1.2.4.exe"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-win"/></svg><span><strong>Download for Windows</strong><small>x64 · EXE · 126 MiB</small></span><svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-download"/></svg></a>
+          <a href="downloads/LAN-Chess-1.2.4-mac-universal.dmg" download><svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-mac"/></svg><span><strong>Download for macOS</strong><small>Universal preview · DMG · 226 MiB</small></span><svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-download"/></svg></a>
+          <p>Intel &amp; Apple silicon. The ad-hoc signed Mac preview may need first-launch approval. <a href="https://github.com/darshitn/lan-chess/blob/main/DESKTOP_APP.md#macos">Mac installation guide ↗</a></p>
+        </div>
+      </div>
+    </section>
+  </main>
+  <footer class="wrap flex flex-wrap items-center justify-between gap-4">
+    <a class="brand inline-flex items-center gap-2.5" href="#top" aria-label="LAN Chess home"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-checker"/></svg>LAN Chess</a><div class="flex flex-wrap items-center gap-5"><a href="https://github.com/darshitn/lan-chess/releases">Release notes ↗</a><a href="https://github.com/darshitn/lan-chess">GitHub ↗</a></div>
+  </footer>
+  <dialog aria-labelledby="zoom-title"><div class="flex items-center justify-between gap-4"><strong id="zoom-title"></strong><button autofocus type="button" id="close">Close ×</button></div><img id="enlarged" alt=""></dialog>
+</body>
+</html>
