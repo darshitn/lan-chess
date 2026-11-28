@@ -1,0 +1,27 @@
+﻿name: Publish verified macOS preview
+
+on: workflow_dispatch
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45443792966
+          name: LAN-Chess-mac-universal-preview
+          path: installer
+      - name: Verify and attach the existing DMG
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        working-directory: installer
+        run: |
+          file=LAN-Chess-1.2.4-mac-universal.dmg
+          echo "eb79c179583b29811010a8afe1a2d0a39af0aaa6a6610e41702959aec5c11891  $file" | sha256sum --check
+          gh release upload v1.2.4 "$file#Mac universal preview (ad-hoc signed)"

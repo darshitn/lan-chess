@@ -22,14 +22,27 @@ jobs:
       - run: npm run electron:build:mac:preview
       - name: Verify the universal app and start its bundled server
         run: |
-          app="release/mac-universal/LAN Chess.app"
+          image=(release/*-mac-universal.dmg)
+          mount="$RUNNER_TEMP/lan-chess-mounted"
+          mkdir -p "$mount"
+          hdiutil verify "${image[0]}"
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount" "${image[0]}"
+          cleanup() {
+            if [[ -n "${app_pid:-}" ]]; then
+              kill "$app_pid" 2>/dev/null || true
+              wait "$app_pid" 2>/dev/null || true
+            fi
+            hdiutil detach "$mount"
+          }
+          trap cleanup EXIT
+          app="$mount/LAN Chess.app"
           executable="$app/Contents/MacOS/LAN Chess"
           lipo "$executable" -verify_arch arm64 x86_64
           codesign --verify --deep --strict "$app"
-          hdiutil verify release/*-mac-universal.dmg
+
           "$executable" > "$RUNNER_TEMP/lan-chess.log" 2>&1 &
           app_pid=$!
-          trap 'kill "$app_pid" 2>/dev/null || true; cat "$RUNNER_TEMP/lan-chess.log"' EXIT
+
           for attempt in {1..30}; do
             if curl -fsS --max-time 2 http://127.0.0.1:3001/api/status; then
               curl -fsS --max-time 5 http://127.0.0.1:3001/ | grep '<title>LAN Chess'
