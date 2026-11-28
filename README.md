@@ -1,155 +1,60 @@
-# LAN Chess — v1.2.4
+# LAN Chess
 
-LAN Chess is a local-network multiplayer chess game built with React, Vite, Express, Socket.IO, and chess.js — no external chess service required. Play over LAN with friends, or play offline against the built-in Stockfish engine.
+**Chess across the table.** Host a game on your computer and invite a friend on the same Wi-Fi. They can join from a phone or laptop browser. When you’re playing solo, face Stockfish, solve puzzles, or review a finished game offline.
 
-## Features
+[Download for Windows](https://github.com/darshitn/lan-chess/releases/download/v1.2.4/LAN-Chess-Setup-1.2.4.exe) · [Get the Mac preview](https://github.com/darshitn/lan-chess/actions/runs/45443792966#artifacts) · [Release notes](CHANGELOG.md)
 
-- **Replay during a game:** Previous/Next arrows below the board let players and spectators browse earlier positions in LAN and computer games. The live match and clocks continue; use **Live** to return to the latest position and resume moving.
+![LAN Chess landing page showing the Sea Glass knight and desktop download options](site/preview-screenshots/sea-glass-desktop.png)
 
-### Play — LAN Multiplayer
-- Real-time LAN multiplayer with visible LAN invitation: prominent room code, complete host LAN URL (e.g., `http://192.168.1.71:3001`), interactive **QR code room joining** (`?room=CODE`) that automatically prefills the Join form on scanned mobile devices, and clear 3-step connection instructions; never tells remote users to open localhost or 127.0.0.1.
-- Resilient multi-tier clipboard copy: "Copy Link" and "Copy Full Invite" buttons backed by an Electron desktop IPC bridge (`desktop.copyText`), browser Clipboard API, and off-screen textarea fallback with accessible live-region status feedback.
-- Redesigned homepage & responsive navigation: polished header layout adapting gracefully to desktop and phone screens (390px/360px) without horizontal scrolling, accessible WAI-ARIA horizontal tablist with roving tabindex, and persistent panel mounting preserving form state across mode switches.
-- Mobile touch enhancements: high-contrast, scalable legal-move indicator dots and capture rings for mobile/touch screens (`pointer: coarse`).
-- Server-authoritative rules, turns, clocks, and results — the client never decides game state
-- 10 time controls grouped by speed with **Fischer increments** (server-credited per move):
-  - 🔥 Bullet: 1+0, 1+1, 2+1
-  - ⚡ Blitz: 3+0, 3+2, 5+0
-  - ⏱️ Rapid: 10+0, 10+5, 15+10
-  - ∞ Casual: no clock
-  - A "Recent" row remembers your last three presets
-- **How the clocks work** (all server-side):
-  - Base time counts down only while it is your turn; the increment is credited by the server immediately after each of your completed moves
-  - Clocks pause while any player is disconnected, and offline time is never charged
-  - The server decides flag-falls (running out of time) and awards the win — clients cannot affect the clock
-  - Low-time formatting and per-second updates are broadcast from the server
-- **Premoves**: queue a move while the opponent thinks (cyan ring markers); it auto-plays if still legal when your turn arrives, is discarded if made illegal, and can be cancelled (click target/origin again or Escape). Promotions auto-queen.
-- Resign, draw offers (**with cancellation** — the offering player may rescind before the opponent responds), takebacks (server-mediated), rematch with color swap — all behind in-app confirmation dialogs that work in every browser
-- Spectator mode (view + chat only; enforced server-side)
-- Reconnection-safe sessions (30 s grace period, abandonment resolution)
-- Room chat with sanitization, rate limiting, and session-based identity
+## Play a game
 
-### Play — vs Computer (offline)
-- **Play vs Computer** accessible directly from the main lobby — no server required
-- Choose **White, Black, or Random** colour before the game starts
-- Five **difficulty levels** (Beginner → Expert) backed by UCI capability probing — no fake Elo labels
-- Natural turn pacing: engine responses are paced realistically according to difficulty and time control, with pacing delays accurately charged to the engine's clock and automatically clamped in low-clock situations to prevent artificial time-outs.
-- Strict cancellation lifecycle: resigning, restarting, or clock expiry immediately cancels running searches and discards delayed engine moves.
-- Engine running in a dedicated Web Worker via the bundled Stockfish WASM binary (same engine used for game review)
-- Full cancellation via **worker termination and replacement**: a cancelled worker is immediately terminated and replaced so stale `bestmove` replies can never leak into subsequent searches
-- Millisecond-precision offline clocks with Fischer increments; moves are rejected after the deadline regardless of interval timing
-- **Engine error recovery**: thinking state cleared on failure; working **Restart Engine** action exposed to the user
-- Completed games saved to history with valid PGN headers and full post-game review (Stockfish analysis, replay, eval graph)
-- Board flip, themes, sounds, premoves, promotion dialog, and all chess.js game-ending rules fully preserved
+1. Open LAN Chess on your computer, choose a clock, and create a room.
+2. Share the room link or show your guest the QR code.
+3. Your guest opens the invitation in a browser on the same local network.
 
-### Board Sizing & Focus Mode (LAN & Offline Play)
-- **Live Adjustable Size**: Adjust board dimensions dynamically during active games via an accessible slider, +/- step buttons, or a direct corner drag handle positioned cleanly outside the squares.
-- **Smart "Fit Screen" Default**: Preserves automatic viewport-height and column-width fitting as the default across phones, laptops, and ultra-wide displays.
-- **"Focus Board" Desktop View**: Collapses the right-hand sidebar into an accessible slide-over drawer, allowing the board to expand significantly across the screen while keeping clocks, turn status, and game controls in clear view.
-- **Unread Chat Badge**: Incoming messages in Focus mode trigger an unread badge on the drawer toggle so communication is never missed.
-- **Fullscreen Support**: One-click fullscreen toggle via the standard Fullscreen API with Escape key restoration.
-- **Zero Network Impact & Clamping**: Board size preferences are saved strictly to local storage without affecting network traffic, PGN, or game state, and automatically clamp to screen width to prevent horizontal overflow.
-
-### Review & train (all offline, client-side)
-- Game history (last 50 games) with automatic saving and PGN/FEN tools (real PGN headers: players, result, termination)
-- Post-game review with replay controls, keyboard navigation, and evaluation graph
-- Stockfish analysis: per-move best move, centipawn loss, classification (brilliant → blunder), accuracy estimates, genuine openings-table "book" detection; engine failures are shown honestly, never masked
-- Practice sandbox with position setup and live engine evaluation
-- Puzzle trainer with **1,320 rated tactical puzzles** (Lichess CC0 database, bundled and validated offline), difficulty filters, and multi-move tactics where the opponent's replies play out
-- **19 board themes** (including the gray "Stone" board), **8 dedicated piece sets** (Classic Staunton, Modern, Minimal, Glass, Wood, Neon, Cyber, Silhouette), 5 highlight styles, curated UI palettes, custom board builder — all persisted locally and never affecting game state
-- Local player statistics (win rate, openings, records)
-
-## Tech Stack
-
-- **Frontend:** React 19 + TypeScript + Vite + Tailwind CSS
-- **Backend:** Node.js + Express + Socket.IO (in-memory authoritative state)
-- **Rules engine:** chess.js (validated on both sides; the server is authoritative)
-- **Engine:** Stockfish (WASM build from `stockfish.js`) in a Web Worker with a strict search lifecycle
-- **Tests:** Vitest — server, client, desktop security, updater, offline engine & controller, live replay, board sizing & controls, themes, piece rendering.
-
-## Architecture
-
-```text
-Browser / Desktop App (React client)
-  ├─ Socket.IO ⇄ Node.js server (authoritative: rooms, moves, clocks, results)
-  │                 └─ chess.js re-validation of every move
-  ├─ Stockfish WASM worker (game review & sandbox — never touches server state)
-  └─ localStorage (preferences, themes, game history)
-```
-
-The server keeps all multiplayer state in memory and validates every action (identity, turn, legality, clock, capacity). Analysis and review operate only on completed game data in the browser.
-
-## Running
-
-### Web Development
-```bash
-npm install
-npm run dev          # dev server (Vite on :5173, API/WS proxied to :3001)
-```
-
-### Web Production
-```bash
-npm run build        # typecheck + client bundle + server compile
-npm start            # serves the built app on http://0.0.0.0:3001
-```
-
-The server prints the LAN URL (e.g. `http://192.168.1.25:3001`) — share it with anyone on the same network. Players can also join by scanning the room's QR code or entering the 4-character room code at any instance's URL.
-
-### Desktop Application
-
-LAN Chess can be built as a universal macOS app for Apple Silicon and Intel. The [desktop guide](DESKTOP_APP.md) covers Mac preview builds, installation, and signed releases.
-
-Download the installer from the [v1.2.4 Release](https://github.com/darshitn/lan-chess/releases/tag/v1.2.4) ([`LAN-Chess-Setup-1.2.4.exe`](https://github.com/darshitn/lan-chess/releases/download/v1.2.4/LAN-Chess-Setup-1.2.4.exe)). Existing updater-enabled desktop installations can download the patch from Settings → Updates and restart to apply it.
-
-> [!NOTE]
-> - **In-App Updating from v1.2.0**: Existing v1.2.0 installations can receive this update automatically via the in-app updater (check **Settings → Updates**).
-> - **Upgrading from v1.1.x**: Earlier versions (v1.1.0 and v1.1.1) did not bundle the in-app updater client. Users on v1.1.x need one manual installation of the setup installer to enable future automated updates. Local preferences, themes, and game history are preserved across upgrades.
-> - **Publisher Warning**: The Windows installer is self-packaged and not signed with a commercial certificate. Windows SmartScreen may show an "Unknown Publisher" warning; click **More info** and then **Run anyway** to proceed.
-
-```bash
-npm run electron:dev     # build and launch the Electron desktop shell
-npm run electron:build   # build and generate the Windows NSIS installer
-npm run electron:build:mac:preview  # build the universal Mac DMG on macOS
-```
-For detailed desktop architecture, see [DESKTOP_APP.md](DESKTOP_APP.md).
-
-#### In-App Updates
-The desktop app checks for updates shortly after launch via `electron-updater` and GitHub Releases. When an update is found, an app-wide notification shows its download progress and links directly to Settings → Updates; once ready, it offers a user-controlled restart. Dismissal lasts only for the current app launch, and a completed download gets a fresh notification. To prevent match disruption, update restarts are locked out during active LAN or computer games, including multiplayer reconnection pauses. Differential transfers are supported when available. Delivery through the live GitHub update feed is supported starting from v1.2.0 installations.
-
-Local preferences and history currently use browser storage tied to the host address and port. If a port conflict causes the desktop server to choose a different port, earlier data can appear absent at the new address; it remains associated with the original address. Close extra copies before updating. Cross-port storage migration is not included in v1.2.4.
-
-## Scripts
-
-| Script | What it does |
+| Platform | Installation |
 | --- | --- |
-| `npm run dev` | Concurrent dev server + client with hot reload |
-| `npm test` | Vitest test suite |
-| `npm run typecheck` | `tsc --noEmit` over the whole project |
-| `npm run build` | Typecheck, then client + server production build |
-| `npm run desktop:assets` | Stage bundled server and static client for Electron |
-| `npm run electron:dev` | Build and open the desktop window |
-| `npm run electron:build` | Build and produce the Windows NSIS installer |
-| `npm run build:puzzles` | Regenerate the bundled puzzle library from a Lichess puzzle database dump (see `scripts/generate-puzzles.mjs`) |
-| `npm start` | Serve the production build |
+| **Windows x64** | Download and run the v1.2.4 EXE. Existing installations with the updater can also check **Settings → Updates**. |
+| **macOS** | Sign in to GitHub to download the universal preview artifact for Apple Silicon and Intel. See the [desktop guide](DESKTOP_APP.md#macos) for installation and Gatekeeper details. |
 
-## Testing
+## Explore the app
 
-```bash
-npm test
+| | What you can do |
+| --- | --- |
+| **Play with friends** | Choose from bullet, blitz, rapid, or untimed games. Use premoves, invite spectators, chat in the room, or play a rematch. |
+| **Play solo** | Play offline against Stockfish at five difficulty levels. Configure the clock and choose White, Black, or a random side. |
+| **Review and train** | Step through moves during a live game, review completed games with Stockfish and an evaluation graph, or solve 1,320 offline tactical puzzles from Lichess. Game history supports PGN and FEN tools. |
+| **Make the board yours** | Resize the board, use Focus Board or fullscreen, and choose from 19 board themes and eight piece sets. Preferences are stored locally. |
+
+## Develop locally
+
+The app uses React, TypeScript, Vite, and Tailwind CSS. Express and Socket.IO manage LAN games, with chess.js validating moves. Stockfish runs in a browser worker for offline play and analysis. Electron packages the desktop app.
+
+Use Node.js 24, which matches the desktop build workflow.
+
+```sh
+npm ci
+npm run dev
 ```
 
-Covers server game-lifecycle integrity (abandonment, forfeits, clock accounting incl. Fischer increments, timeouts, takebacks, spectator limits, room caps, time-control normalization, draw-offer cancellation authorization), input validation, chess helpers, openings/book detection, statistics, persistence corruption handling, desktop security and origin validation (URL navigation checks, CLI parameter validation, port fallback), the Stockfish pipeline (search lifecycle, score parsing, perspective normalization, cancellation, stop-and-drain stale-output immunity, FEN replay, best-move failure handling), and the offline computer-game controller (clock settlement, deadline rejection, between-tick moves, engine error recovery, cancellation sequencing).
+Vite runs on port 5173 and proxies requests to the game server on port 3001. For a production-style LAN run, use `npm run build` followed by `npm start`, then share the LAN address printed by the server.
 
+```sh
+npm test
+npm run typecheck
+npm run build
+```
 
-## Troubleshooting
+See the [desktop guide](DESKTOP_APP.md) for packaging commands, updates, and storage details. If a guest can’t connect, check that both devices are on the same network and use the host’s displayed LAN address. Some guest networks isolate devices, and a server restart clears active rooms.
 
-- **Other devices can't connect** — confirm both devices are on the same Wi-Fi/LAN, use the exact LAN URL printed by the server, and allow the port through the firewall. Some college/public Wi-Fi networks isolate clients from each other; that cannot be bypassed by the app.
-- **Wrong IP shown** — if the machine has multiple adapters, verify the address matches the network your players are on.
-- **Analysis seems slow** — depth 15 can take a few seconds per move; use Standard (12) or cancel via the button. Engine failures are shown as "Analysis unavailable" rather than fake results.
-- **Sounds don't play at first** — browsers require user interaction before audio; click anywhere once.
+## Landing page and Vercel
 
-## Limitations
+Preview the site with `node site/server.cjs` at [localhost:5050](http://localhost:5050/). After editing the Tailwind source, regenerate the checked-in CSS with `npm run site:css`.
 
-- All multiplayer state is in-memory: a server restart clears active rooms.
-- Analysis evals come from the bundled 2019 Stockfish build; opening-phase evals at low depth can be noisy (mitigated by genuine book detection).
-- Player identity is a localStorage session id over plaintext WS — appropriate for a trusted home/college LAN.
+In Vercel, import the **repository root**. [vercel.json](vercel.json) uses the **Other** preset and builds the static landing page without installing app dependencies.
+
+```sh
+node site/build.cjs --vercel
+```
+
+The deployment output is `dist/vercel-marketing`. Windows downloads are served by GitHub Releases. For macOS, the build uses a checksum-matched release asset when available and otherwise labels the GitHub Actions preview and its sign-in requirement. You can set `LAN_CHESS_MAC_DOWNLOAD_URL` in Vercel to a public HTTPS URL for the verified DMG.
